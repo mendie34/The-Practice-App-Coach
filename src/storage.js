@@ -146,3 +146,29 @@ export async function declineLink(playerId, coachId) {
 export async function removeFromRoster(playerId, coachId) {
   await deleteDoc(linkDocRef(playerId, coachId));
 }
+
+// ===== Reading a connected player's real practice data =====
+
+// The subset of the player app's APP_DATA_KEYS that the coach-side stats screens need. Kept as
+// its own list (rather than importing the player app's) since the two apps are separate repos —
+// see realStats.js for how each key's raw JSON string gets turned into stats.
+const PLAYER_STATS_KEYS = ["golf:sessions", "tee:sessions", "shortgame:sessions", "putting:sessions"];
+
+function playerAppDataDocRef(playerId, key) {
+  return doc(db, "users", playerId, "appData", key);
+}
+
+// Reads a connected player's raw appData docs (same users/{uid}/appData/{key} shape the player
+// app itself writes to). Relies on firestore.rules allowing a coach to read these docs once an
+// "approved" coachLinks doc exists for that player+coach pair. Returns a flat
+// { [storageKey]: rawJsonStringOrNull } object — realStats.js's computeStatsFromAppData parses it.
+export async function loadPlayerAppData(playerId) {
+  const entries = {};
+  await Promise.all(
+    PLAYER_STATS_KEYS.map(async (key) => {
+      const snap = await getDoc(playerAppDataDocRef(playerId, key));
+      entries[key] = snap.exists() ? snap.data().value : null;
+    })
+  );
+  return entries;
+}
