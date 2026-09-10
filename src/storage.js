@@ -139,3 +139,10 @@ export async function approveLink(playerId, coachId) {
 export async function declineLink(playerId, coachId) {
   await updateDoc(linkDocRef(playerId, coachId), { status: "declined", respondedAt: Date.now() });
 }
+
+// Ends an APPROVED link from the coach's side — removes a player from the roster. Firestore
+// rules only allow this while status is "approved"; the doc is simply deleted, same as a
+// player disconnecting or withdrawing a still-pending request.
+export async function removeFromRoster(playerId, coachId) {
+  await deleteDoc(linkDocRef(playerId, coachId));
+}
