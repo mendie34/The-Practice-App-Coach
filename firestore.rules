@@ -1,0 +1,51 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ----- Player app: user profile + per-user app data (existing, reconstructed here for a
+    // single source of truth — the live copy is what's actually published in the Firebase
+    // console under this project; paste this whole file there to keep both apps in sync) -----
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+
+      match /appData/{key} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+    }
+
+    // ----- Coach app: coach profiles -----
+    // Any signed-in user (coach or player) can read a coach's profile — players need to browse
+    // and search coaches to send a request. Only the coach themself can create/update their own
+    // doc, and profiles are never deleted from the client (a coach account close-out, if ever
+    // built, would need its own server-side flow).
+    match /coaches/{coachId} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null && request.auth.uid == coachId;
+      allow delete: if false;
+    }
+
+    // ----- Coach <-> Player links -----
+    // Doc id is always `${playerId}_${coachId}`, so there's at most one link per pair (a second
+    // "Apply" just re-reads the existing doc rather than creating a duplicate), and each side of
+    // a link can only touch the rows that name them.
+    match /coachLinks/{linkId} {
+      allow read: if request.auth != null &&
+        (request.auth.uid == resource.data.playerId || request.auth.uid == resource.data.coachId);
+
+      // A player creates their own pending request, naming themself as playerId, and the doc id
+      // must match the playerId_coachId convention — this stops a player from writing a link that
+      // claims to be from someone else, or under a mismatched id.
+      allow create: if request.auth != null &&
+        request.auth.uid == request.resource.data.playerId &&
+        request.resource.data.status == "pending" &&
+        linkId == request.resource.data.playerId + "_" + request.resource.data.coachId;
+
+      // The coach approves/declines links that name them as coachId. A player may only delete
+      // their own request while it's still pending (withdraw) — never edit it after the fact,
+      // and never touch it once a coach has responded.
+      allow update: if request.auth != null && request.auth.uid == resource.data.coachId;
+      allow delete: if request.auth != null &&
+        request.auth.uid == resource.data.playerId && resource.data.status == "pending";
+    }
+  }
+}

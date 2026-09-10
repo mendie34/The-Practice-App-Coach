@@ -1,0 +1,10 @@
+{
+  "name": "the-practice-app-coach",
+  "compatibility_date": "2025-01-01",
+  "assets": {
+    "directory": "./dist"
+  },
+  "build": {
+    "command": "npm run build"
+  }
+}
