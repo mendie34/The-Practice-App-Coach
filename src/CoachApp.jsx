@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { BarChart, Bar, Cell, LabelList, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { watchCoachLinks, approveLink, declineLink } from "./storage.js";
+import { watchCoachLinks, approveLink, declineLink, removeFromRoster } from "./storage.js";
 
 // ===== THE PRACTICE APP — COACH =====
 // Real standalone build. Auth + profile setup live in AuthGate.jsx; this component renders once
@@ -661,12 +661,13 @@ function StatBox({ label, value, valueColor }) {
 }
 
 // ===== Player overview: at-a-glance vs baseline + suggested focus =====
-function PlayerOverviewScreen({ player, onOpenSection }) {
+function PlayerOverviewScreen({ player, onOpenSection, onRemoveFromRoster }) {
   const stats = buildSampleStats(player);
   const glanceRows = buildGlanceRows(stats);
   const { focus, strengths } = buildSuggestedFocus(stats);
   const totalSessions = glanceRows.reduce((a, r) => a + r.sessions, 0);
   const [shared, setShared] = useState(false);
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
   const firstName = player.playerName.split(" ")[0];
   const rowStyle = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderTop: `1px solid ${COLORS.creamDim}15` };
 
@@ -800,6 +801,76 @@ function PlayerOverviewScreen({ player, onOpenSection }) {
         baseline {firstName} has set for themselves in their own app — so every player's numbers
         stay on the same footing.
       </div>
+
+      {onRemoveFromRoster && (
+        <Card style={{ marginTop: 16 }}>
+          {!confirmingRemove ? (
+            <button
+              onClick={() => setConfirmingRemove(true)}
+              style={{
+                width: "100%",
+                padding: "10px 0",
+                borderRadius: 8,
+                border: `1px solid ${COLORS.creamDim}33`,
+                background: "transparent",
+                color: COLORS.creamDim,
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 11,
+                letterSpacing: 0.5,
+                cursor: "pointer",
+              }}
+            >
+              REMOVE FROM ROSTER
+            </button>
+          ) : (
+            <>
+              <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: COLORS.creamDim, lineHeight: 1.5 }}>
+                Remove {player.playerName} from your roster? They'll lose your shared notes and
+                you'll lose access to their stats — they'd need to send a new request to reconnect.
+              </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <button
+                  onClick={() => setConfirmingRemove(false)}
+                  style={{
+                    flex: 1,
+                    padding: "10px 0",
+                    borderRadius: 8,
+                    border: `1px solid ${COLORS.creamDim}33`,
+                    background: "transparent",
+                    color: COLORS.creamDim,
+                    fontFamily: "'Bebas Neue', sans-serif",
+                    fontSize: 14,
+                    letterSpacing: 0.5,
+                    cursor: "pointer",
+                  }}
+                >
+                  CANCEL
+                </button>
+                <button
+                  onClick={() => {
+                    setConfirmingRemove(false);
+                    onRemoveFromRoster(player.id);
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: "10px 0",
+                    borderRadius: 8,
+                    border: `1px solid ${COLORS.flag}66`,
+                    background: "transparent",
+                    color: COLORS.flag,
+                    fontFamily: "'Bebas Neue', sans-serif",
+                    fontSize: 14,
+                    letterSpacing: 0.5,
+                    cursor: "pointer",
+                  }}
+                >
+                  REMOVE
+                </button>
+              </div>
+            </>
+          )}
+        </Card>
+      )}
     </div>
   );
 }
@@ -1230,6 +1301,21 @@ export default function CoachApp({ uid, profile, onSignOut }) {
     }
   }
 
+  async function handleRemoveFromRoster(playerId) {
+    if (previewMode) {
+      setPreviewRoster((prev) => (prev || []).filter((p) => p.id !== playerId));
+      setScreen("dashboard");
+      return;
+    }
+    setBusyId(playerId);
+    try {
+      await removeFromRoster(playerId, uid);
+      setScreen("dashboard");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   function handleOpenPlayer(id) {
     setSelectedPlayerId(id);
     setScreen("playerDetail");
@@ -1301,7 +1387,11 @@ export default function CoachApp({ uid, profile, onSignOut }) {
         )}
 
         {screen === "playerDetail" && selectedPlayer && (
-          <PlayerOverviewScreen player={selectedPlayer} onOpenSection={handleOpenSection} />
+          <PlayerOverviewScreen
+            player={selectedPlayer}
+            onOpenSection={handleOpenSection}
+            onRemoveFromRoster={handleRemoveFromRoster}
+          />
         )}
 
         {screen === "playerSection" && selectedPlayer && selectedSectionKey && (
