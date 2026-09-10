@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { BarChart, Bar, Cell, LabelList, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { watchCoachLinks, approveLink, declineLink, removeFromRoster } from "./storage.js";
+import { usePlayerStats, usePlayerStatsMap, EMPTY_STATS } from "./realStats.js";
 
 // ===== THE PRACTICE APP — COACH =====
 // Real standalone build. Auth + profile setup live in AuthGate.jsx; this component renders once
@@ -661,8 +662,9 @@ function StatBox({ label, value, valueColor }) {
 }
 
 // ===== Player overview: at-a-glance vs baseline + suggested focus =====
-function PlayerOverviewScreen({ player, onOpenSection, onRemoveFromRoster }) {
-  const stats = buildSampleStats(player);
+function PlayerOverviewScreen({ player, onOpenSection, onRemoveFromRoster, previewMode }) {
+  const { stats: realStats, loading: statsLoading } = usePlayerStats(previewMode ? null : player.id);
+  const stats = previewMode ? buildSampleStats(player) : realStats;
   const glanceRows = buildGlanceRows(stats);
   const { focus, strengths } = buildSuggestedFocus(stats);
   const totalSessions = glanceRows.reduce((a, r) => a + r.sessions, 0);
@@ -695,6 +697,7 @@ function PlayerOverviewScreen({ player, onOpenSection, onRemoveFromRoster }) {
           <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, lineHeight: 1.1 }}>{player.playerName}</div>
           <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: COLORS.creamDim, marginTop: 2 }}>
             SG baseline: {BASELINE_LABEL} · {totalSessions} total sessions
+            {!previewMode && statsLoading && " · loading…"}
           </div>
         </div>
       </div>
@@ -906,8 +909,9 @@ function StatInsightCard({ title, subtitle, rows }) {
   );
 }
 
-function PlayerSectionScreen({ player, sectionKey }) {
-  const stats = buildSampleStats(player);
+function PlayerSectionScreen({ player, sectionKey, previewMode }) {
+  const { stats: realStats } = usePlayerStats(previewMode ? null : player.id);
+  const stats = previewMode ? buildSampleStats(player) : realStats;
   const meta = SECTION_META.find((s) => s.key === sectionKey);
   const s = stats[sectionKey];
 
@@ -1064,17 +1068,18 @@ function CompareBarChart({ title, subtitle, data, isPct }) {
   );
 }
 
-function CompareResultsScreen({ roster, selected }) {
+function CompareResultsScreen({ roster, selected, previewMode }) {
   const [baselineKey, setBaselineKey] = useState("tour");
   const baselineOption = COMPARE_BASELINE_OPTIONS.find((b) => b.key === baselineKey) || COMPARE_BASELINE_OPTIONS[0];
 
   // Keep colors stable by SELECTION order (not roster order), so a player keeps the same
   // color across every chart for as long as they stay selected.
   const orderedSelected = selected.map((id) => roster.find((p) => p.id === id)).filter(Boolean);
+  const { statsById: realStatsById } = usePlayerStatsMap(previewMode ? [] : orderedSelected.map((p) => p.id));
   const compareEntries = orderedSelected.map((player, i) => ({
     player,
     color: COMPARE_COLORS[i % COMPARE_COLORS.length],
-    stats: buildSampleStats(player),
+    stats: previewMode ? buildSampleStats(player) : realStatsById[player.id] || EMPTY_STATS,
   }));
 
   function chartDataFor(sectionKey, isPct) {
@@ -1391,14 +1396,17 @@ export default function CoachApp({ uid, profile, onSignOut }) {
             player={selectedPlayer}
             onOpenSection={handleOpenSection}
             onRemoveFromRoster={handleRemoveFromRoster}
+            previewMode={previewMode}
           />
         )}
 
         {screen === "playerSection" && selectedPlayer && selectedSectionKey && (
-          <PlayerSectionScreen player={selectedPlayer} sectionKey={selectedSectionKey} />
+          <PlayerSectionScreen player={selectedPlayer} sectionKey={selectedSectionKey} previewMode={previewMode} />
         )}
 
-        {screen === "compare" && <CompareResultsScreen roster={displayedRoster} selected={compareSelected} />}
+        {screen === "compare" && (
+          <CompareResultsScreen roster={displayedRoster} selected={compareSelected} previewMode={previewMode} />
+        )}
 
         {screen === "settings" && (
           <SettingsScreen profile={profile} onSignOut={onSignOut} previewMode={previewMode} onExitPreview={handleExitPreview} />
