@@ -273,6 +273,20 @@ function safeParse(raw) {
   }
 }
 
+// Latest valid `.date` across a list of sessions, as an epoch ms number (or null if the list is
+// empty / has no parseable dates). Every session object across all four practice modes carries a
+// `.date` field (used for exactly this kind of sort elsewhere — see byDate() above), so this is
+// generic across golf/tee/shortgame/putting sessions.
+function latestSessionTime(sessions) {
+  let latest = null;
+  for (const s of sessions) {
+    if (!s || !s.date) continue;
+    const t = new Date(s.date).getTime();
+    if (!Number.isNaN(t) && (latest === null || t > latest)) latest = t;
+  }
+  return latest;
+}
+
 // Turns the player's raw appData (as returned by loadPlayerAppData) into the exact stats shape
 // PlayerOverviewScreen / PlayerSectionScreen / CompareResultsScreen already expect — matching
 // buildSampleStats()'s return shape field-for-field so no rendering code needed to change.
@@ -284,12 +298,20 @@ export function computeStatsFromAppData(appData) {
   const puttingPractice = allPutting.filter((s) => s.type !== "course");
   const puttingCourse = allPutting.filter((s) => s.type === "course");
 
+  // Most recent session across EVERY practice mode, not just one section — this is what powers
+  // the dashboard roster tile's "last logged" date + RAG status (CoachApp.jsx's PlayerBlock),
+  // since a coach wants to know the player is active at all, not just active in one section.
+  const lastSessionMs = [golfSessions, teeSessions, shortGameSessions, allPutting]
+    .map(latestSessionTime)
+    .reduce((latest, t) => (t !== null && (latest === null || t > latest) ? t : latest), null);
+
   return {
     range: computeRangeStats(golfSessions),
     teeAccuracy: computeTeeAccuracyStats(teeSessions),
     shortGame: computeShortGameStats(shortGameSessions),
     puttingPractice: computePuttingPracticeStats(puttingPractice),
     puttingCourse: computePuttingCourseStats(puttingCourse),
+    lastSessionDate: lastSessionMs === null ? null : new Date(lastSessionMs).toISOString(),
   };
 }
 
@@ -299,6 +321,7 @@ export const EMPTY_STATS = {
   shortGame: EMPTY_SG_SECTION,
   puttingPractice: EMPTY_SG_SECTION,
   puttingCourse: EMPTY_SG_SECTION,
+  lastSessionDate: null,
 };
 
 // Loads + computes one player's real stats, re-running whenever playerId changes. Returns
