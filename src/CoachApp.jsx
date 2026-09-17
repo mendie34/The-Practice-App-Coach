@@ -1115,7 +1115,16 @@ function CompareResultsScreen({ roster, selected, previewMode }) {
   // Keep colors stable by SELECTION order (not roster order), so a player keeps the same
   // color across every chart for as long as they stay selected.
   const orderedSelected = selected.map((id) => roster.find((p) => p.id === id)).filter(Boolean);
-  const { statsById: realStatsById } = usePlayerStatsMap(previewMode ? [] : orderedSelected.map((p) => p.id));
+  // Derived straight from `selected` (already just ids) and `roster`, both stable React state —
+  // memoized so this array's reference only changes when the actual selection/roster does, not
+  // on every render. Passing a freshly-.map()'d array straight into usePlayerStatsMap on every
+  // render was the likely cause of the "sessions flickering to 0/loading" bug: its effect saw a
+  // "new" array by reference each time and tore down + rebuilt its Firestore listeners in a loop.
+  const playerIds = useMemo(
+    () => selected.filter((id) => roster.some((p) => p.id === id)),
+    [selected, roster]
+  );
+  const { statsById: realStatsById } = usePlayerStatsMap(previewMode ? [] : playerIds);
   const compareEntries = orderedSelected.map((player, i) => ({
     player,
     color: COMPARE_COLORS[i % COMPARE_COLORS.length],
@@ -1308,7 +1317,12 @@ export default function CoachApp({ uid, profile, onSignOut }) {
   // comes from the same per-player real-stats fetch the overview/compare screens already use —
   // see realStats.js's lastSessionDate field on computeStatsFromAppData's return. Preview/sample
   // players already carry their own lastSessionDate directly on the sample player object.
-  const { statsById: rosterStatsById } = usePlayerStatsMap(previewMode ? [] : displayedRoster.map((p) => p.id));
+  // Memoized on displayedRoster's own reference (stable React state — see the note in
+  // CompareResultsScreen above for why this matters) rather than passing a fresh .map() result
+  // into usePlayerStatsMap on every render, which was very likely the cause of the dashboard's
+  // session counts flickering to 0/loading and back.
+  const rosterIds = useMemo(() => displayedRoster.map((p) => p.id), [displayedRoster]);
+  const { statsById: rosterStatsById } = usePlayerStatsMap(previewMode ? [] : rosterIds);
   const dashboardRoster = displayedRoster.map((p) => ({
     ...p,
     lastSessionDate: previewMode ? p.lastSessionDate ?? null : rosterStatsById[p.id]?.lastSessionDate ?? null,
