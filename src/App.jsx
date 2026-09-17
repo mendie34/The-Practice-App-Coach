@@ -13,6 +13,7 @@ import {
   ReferenceLine,
 } from "recharts";
 import {
+  auth,
   loadAllAppData,
   exportProfileData,
   importProfileData,
@@ -603,6 +604,10 @@ function sessionTrendData(sessions, filterMin, filterMax) {
         avgMissPct: avg(shots.map((sh) => (sh.target ? (sh.diff / sh.target) * 100 : 0))),
         avgMissYds: avg(shots.map((sh) => sh.diff)),
         avgSG: avg(shots.map((sh) => sgForApproachShot(sh.target, sh.actual))),
+        // Live-computed from the currently active baseline, same as everywhere else this scoring
+        // appears — so this trend re-shapes immediately if the player changes baseline later, no
+        // stored/frozen values to go stale.
+        roundToPar: shots.reduce((a, sh) => a + scoreForDistanceShot(sh.target, sh.actual), 0),
         shotCount: shots.length,
       };
     })
@@ -781,8 +786,14 @@ function computeOffsets(handicapKey) {
 // site in the app picks up the active baseline without needing it threaded through as a prop.
 // Kept in sync with React state (which drives persistence + re-renders) via applyBaseline().
 let currentOffsets = computeOffsets("tour");
+// Tracked alongside currentDistanceScoreBands purely so the info modal below can show which
+// baseline's bands are currently active (e.g. "SCRATCH") without needing baselineHandicap
+// threaded down as a prop through every screen that wants to explain the scoring.
+let currentBaselineKey = "tour";
 function applyBaseline(handicapKey) {
   currentOffsets = computeOffsets(handicapKey);
+  currentBaselineKey = handicapKey;
+  currentDistanceScoreBands = DISTANCE_SCORE_BAND_SETS[handicapKey] || DISTANCE_SCORE_BAND_SETS.tour;
 }
 
 // Strokes gained for a single putt: baseline expected putts from this distance, minus what was
@@ -848,6 +859,249 @@ function sgForApproachShot(targetYds, actualYds) {
   const missYds = Math.abs(actualYds - targetYds);
   const missFt = missYds * 3;
   return pgaBaselineApproach(targetYds) - pgaBaselinePutts(missFt) - 1 - currentOffsets.approach;
+}
+
+// ===== Distance Control scoring — Par/Birdie/Eagle/Bogey/Double, based on miss % of target =====
+// Deliberately separate from strokes gained above: SG measures shot value against a scratch/tour
+// baseline, this measures "did you hit your number" as a simple golf-scoring analogy. Miss % is
+// used (rather than an absolute yardage window) so the same bands work at wedge distance and
+// long-iron distance alike. Direction of the miss doesn't matter (long or short score the same),
+// matching how AVG MISS above is already an unsigned distance.
+//
+// Adaptive by ability, reusing the SAME baseline/handicap tiers as the Settings SG-baseline
+// selector (BASELINE_OPTIONS/HANDICAP_STROKES_LOST_PER_ROUND above) — when the player changes
+// their baseline in Settings, these bands change with it via applyBaseline() below.
+// All 8 tiers now have real numbers. tour/scratch were the user's own chosen ratios; the other
+// six (5/10/15/20/25/30 HCP) reuse the same linear tier-ladder already baked into
+// HANDICAP_STROKES_LOST_PER_ROUND (tour=0 units, scratch=1, 5=2, 10=3, 15=4, 20=5, 25=6, 30=7,
+// each unit -1.5 strokes/round on approach) applied to the user's own tour→scratch gaps: +2%
+// per tier for Eagle/Birdie/Par, +3% per tier for Bogey (matching the user's own 7→10 jump).
+// See claude/DISTANCE_AND_SHORTGAME_BASELINES.md for the full derivation.
+const DISTANCE_SCORE_BAND_SETS = {
+  tour: [
+    { maxMissPct: 1, score: -2, label: "EAGLE" },
+    { maxMissPct: 3, score: -1, label: "BIRDIE" },
+    { maxMissPct: 5, score: 0, label: "PAR" },
+    { maxMissPct: 7, score: 1, label: "BOGEY" },
+    { maxMissPct: Infinity, score: 2, label: "DOUBLE" },
+  ],
+  scratch: [
+    { maxMissPct: 3, score: -2, label: "EAGLE" },
+    { maxMissPct: 5, score: -1, label: "BIRDIE" },
+    { maxMissPct: 7, score: 0, label: "PAR" },
+    { maxMissPct: 10, score: 1, label: "BOGEY" },
+    { maxMissPct: Infinity, score: 2, label: "DOUBLE" },
+  ],
+  "5": [
+    { maxMissPct: 5, score: -2, label: "EAGLE" },
+    { maxMissPct: 7, score: -1, label: "BIRDIE" },
+    { maxMissPct: 9, score: 0, label: "PAR" },
+    { maxMissPct: 13, score: 1, label: "BOGEY" },
+    { maxMissPct: Infinity, score: 2, label: "DOUBLE" },
+  ],
+  "10": [
+    { maxMissPct: 7, score: -2, label: "EAGLE" },
+    { maxMissPct: 9, score: -1, label: "BIRDIE" },
+    { maxMissPct: 11, score: 0, label: "PAR" },
+    { maxMissPct: 16, score: 1, label: "BOGEY" },
+    { maxMissPct: Infinity, score: 2, label: "DOUBLE" },
+  ],
+  "15": [
+    { maxMissPct: 9, score: -2, label: "EAGLE" },
+    { maxMissPct: 11, score: -1, label: "BIRDIE" },
+    { maxMissPct: 13, score: 0, label: "PAR" },
+    { maxMissPct: 19, score: 1, label: "BOGEY" },
+    { maxMissPct: Infinity, score: 2, label: "DOUBLE" },
+  ],
+  "20": [
+    { maxMissPct: 11, score: -2, label: "EAGLE" },
+    { maxMissPct: 13, score: -1, label: "BIRDIE" },
+    { maxMissPct: 15, score: 0, label: "PAR" },
+    { maxMissPct: 22, score: 1, label: "BOGEY" },
+    { maxMissPct: Infinity, score: 2, label: "DOUBLE" },
+  ],
+  "25": [
+    { maxMissPct: 13, score: -2, label: "EAGLE" },
+    { maxMissPct: 15, score: -1, label: "BIRDIE" },
+    { maxMissPct: 17, score: 0, label: "PAR" },
+    { maxMissPct: 25, score: 1, label: "BOGEY" },
+    { maxMissPct: Infinity, score: 2, label: "DOUBLE" },
+  ],
+  "30": [
+    { maxMissPct: 15, score: -2, label: "EAGLE" },
+    { maxMissPct: 17, score: -1, label: "BIRDIE" },
+    { maxMissPct: 19, score: 0, label: "PAR" },
+    { maxMissPct: 28, score: 1, label: "BOGEY" },
+    { maxMissPct: Infinity, score: 2, label: "DOUBLE" },
+  ],
+};
+
+// Kept in sync with the active baseline via applyBaseline() above, same pattern as currentOffsets.
+let currentDistanceScoreBands = DISTANCE_SCORE_BAND_SETS.tour;
+
+function distanceScoreBand(targetYds, actualYds) {
+  const missPct = targetYds > 0 ? (Math.abs(actualYds - targetYds) / targetYds) * 100 : 0;
+  return currentDistanceScoreBands.find((b) => missPct <= b.maxMissPct);
+}
+
+function scoreForDistanceShot(targetYds, actualYds) {
+  return distanceScoreBand(targetYds, actualYds).score;
+}
+
+function labelForDistanceShot(targetYds, actualYds) {
+  return distanceScoreBand(targetYds, actualYds).label;
+}
+
+// Standard golf to-par formatting: 0 -> "E", positive -> "+n", negative -> "-n".
+function formatToPar(score) {
+  if (score === 0) return "E";
+  return score > 0 ? `+${score}` : `${score}`;
+}
+
+function toParColor(score) {
+  if (score < 0) return COLORS.fairwayLight;
+  if (score === 0) return COLORS.cream;
+  return COLORS.flag;
+}
+
+function activeDistanceScoreBaselineLabel() {
+  return BASELINE_OPTIONS.find((b) => b.key === currentBaselineKey)?.label || "PGA TOUR";
+}
+
+// Small circular "i" button, inline rather than absolutely-positioned like HomeInfoButton (that
+// one's built for corner-of-a-tile placement on Home; this sits right next to a text label).
+function InlineInfoButton({ onClick }) {
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      style={{
+        width: 16,
+        height: 16,
+        borderRadius: "50%",
+        border: `1.5px solid ${COLORS.creamDim}`,
+        background: "transparent",
+        color: COLORS.creamDim,
+        fontFamily: "'Inter', sans-serif",
+        fontWeight: 700,
+        fontSize: 9,
+        lineHeight: 1,
+        padding: 0,
+        cursor: "pointer",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        marginLeft: 6,
+        flexShrink: 0,
+      }}
+    >
+      i
+    </button>
+  );
+}
+
+// Explains the Par/Birdie/Eagle scoring, reading the CURRENTLY ACTIVE bands/baseline directly
+// from the module-level state above — so if the player has "Scratch" selected in Settings, this
+// shows the Scratch numbers, not a hardcoded PGA Tour explanation.
+function DistanceScoreInfoModal({ onClose }) {
+  const bands = currentDistanceScoreBands;
+  const rows = bands.map((b, i) =>
+    b.maxMissPct === Infinity
+      ? { label: b.label, desc: `More than ${bands[i - 1].maxMissPct}% off target` }
+      : { label: b.label, desc: `Within ${b.maxMissPct}% of target` }
+  );
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(10,22,15,0.75)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 24,
+        zIndex: 50,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: COLORS.turf,
+          border: `1px solid ${COLORS.creamDim}33`,
+          borderRadius: 14,
+          padding: 20,
+          maxWidth: 360,
+          width: "100%",
+          maxHeight: "85vh",
+          overflowY: "auto",
+        }}
+      >
+        <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 20, letterSpacing: 1, color: COLORS.cream }}>
+          PAR SCORING
+        </div>
+        <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 12, color: COLORS.cream, lineHeight: 1.55, marginTop: 8 }}>
+          Each shot is scored on how close it landed to your target, as a percentage of that
+          target distance — so the same bands work fairly whether you're hitting a wedge or a
+          long iron. It's a separate measure from strokes gained: this is "did you hit your
+          number," not shot value. Miss direction (long or short) doesn't matter.
+        </div>
+        <div
+          style={{
+            marginTop: 12,
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 10,
+            color: COLORS.creamDim,
+            letterSpacing: 1,
+          }}
+        >
+          CURRENT BASELINE: {activeDistanceScoreBaselineLabel()}
+        </div>
+        <div style={{ marginTop: 8, border: `1px solid ${COLORS.creamDim}22`, borderRadius: 10, overflow: "hidden" }}>
+          {rows.map((r, i) => (
+            <div
+              key={r.label}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "8px 12px",
+                borderTop: i === 0 ? "none" : `1px solid ${COLORS.creamDim}11`,
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 12,
+              }}
+            >
+              <div style={{ color: toParColor(bands[i].score), fontWeight: 600 }}>{r.label}</div>
+              <div style={{ color: COLORS.creamDim, fontSize: 11 }}>{r.desc}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: COLORS.creamDim, marginTop: 10, lineHeight: 1.5 }}>
+          Change your baseline in Settings to switch bands — every level now has its own.
+        </div>
+        <button
+          onClick={onClose}
+          style={{
+            width: "100%",
+            marginTop: 14,
+            padding: "10px 0",
+            borderRadius: 10,
+            border: "none",
+            background: COLORS.fairway,
+            color: COLORS.cream,
+            fontFamily: "'Bebas Neue', sans-serif",
+            fontSize: 16,
+            letterSpacing: 1,
+            cursor: "pointer",
+          }}
+        >
+          GOT IT
+        </button>
+      </div>
+    </div>
+  );
 }
 
 // ===== PGA Tour short-game baselines (strokes gained), rough + sand lies =====
@@ -1212,6 +1466,347 @@ function shortGameBaseline(lie, yds) {
 function sgForShortGameShot(lie, targetYds, resultFt) {
   const remainingStrokes = resultFt <= 0 ? 0 : pgaBaselinePutts(resultFt);
   return shortGameBaseline(lie, targetYds) - remainingStrokes - 1 - currentOffsets.shortgame;
+}
+
+// ===== Short Game scoring — Par/Birdie/Eagle/Bogey/Double, based on proximity % of shot distance =====
+// Same golf-scoring analogy as Distance Control above, but the "miss" here is proximity to the
+// HOLE rather than distance from a chosen target — Short Game shots aim at the hole itself, not
+// an arbitrary yardage. proxPct = resultFt / (targetYds * 3) * 100, so a good 10-yard chip and a
+// good 40-yard pitch can share the same band language. A holed shot is always Eagle regardless of
+// %, same convention as sgForShortGameShot's remainingStrokes=0 case just above.
+//
+// Deliberately lie-specific — fairway/rough/bunker each get their own bands at every tier, since
+// a good bunker shot doesn't finish as close as a good fairway shot (bunker is consistently the
+// hardest lie in every source checked). Adaptive by the same baseline/handicap tiers as Distance
+// Control, kept in sync via applyBaseline() above.
+//
+// Numbers are synthesized from several real, cited proximity datasets (MyGolfSpy's short-game-
+// by-handicap chart, Shot Scope's bunker case study and lie-difficulty ratio, World Of Short
+// Game's PGA Tour fairway anchor) rather than one authoritative source — full derivation and
+// sources in claude/DISTANCE_AND_SHORTGAME_BASELINES.md. Treat these the same way the user
+// treated their own Distance Control tour/scratch ratios: a reasoned starting point to tune by
+// feel, not a locked spec.
+const SHORTGAME_SCORE_BAND_SETS = {
+  tour: {
+    fairway: [
+      { maxProxPct: 4, score: -2, label: "EAGLE" },
+      { maxProxPct: 7, score: -1, label: "BIRDIE" },
+      { maxProxPct: 10, score: 0, label: "PAR" },
+      { maxProxPct: 14, score: 1, label: "BOGEY" },
+      { maxProxPct: Infinity, score: 2, label: "DOUBLE" },
+    ],
+    rough: [
+      { maxProxPct: 5, score: -2, label: "EAGLE" },
+      { maxProxPct: 8, score: -1, label: "BIRDIE" },
+      { maxProxPct: 12, score: 0, label: "PAR" },
+      { maxProxPct: 17, score: 1, label: "BOGEY" },
+      { maxProxPct: Infinity, score: 2, label: "DOUBLE" },
+    ],
+    bunker: [
+      { maxProxPct: 6, score: -2, label: "EAGLE" },
+      { maxProxPct: 10, score: -1, label: "BIRDIE" },
+      { maxProxPct: 14, score: 0, label: "PAR" },
+      { maxProxPct: 20, score: 1, label: "BOGEY" },
+      { maxProxPct: Infinity, score: 2, label: "DOUBLE" },
+    ],
+  },
+  scratch: {
+    fairway: [
+      { maxProxPct: 5, score: -2, label: "EAGLE" },
+      { maxProxPct: 9, score: -1, label: "BIRDIE" },
+      { maxProxPct: 13, score: 0, label: "PAR" },
+      { maxProxPct: 18, score: 1, label: "BOGEY" },
+      { maxProxPct: Infinity, score: 2, label: "DOUBLE" },
+    ],
+    rough: [
+      { maxProxPct: 6, score: -2, label: "EAGLE" },
+      { maxProxPct: 11, score: -1, label: "BIRDIE" },
+      { maxProxPct: 15, score: 0, label: "PAR" },
+      { maxProxPct: 21, score: 1, label: "BOGEY" },
+      { maxProxPct: Infinity, score: 2, label: "DOUBLE" },
+    ],
+    bunker: [
+      { maxProxPct: 7, score: -2, label: "EAGLE" },
+      { maxProxPct: 13, score: -1, label: "BIRDIE" },
+      { maxProxPct: 18, score: 0, label: "PAR" },
+      { maxProxPct: 25, score: 1, label: "BOGEY" },
+      { maxProxPct: Infinity, score: 2, label: "DOUBLE" },
+    ],
+  },
+  "5": {
+    fairway: [
+      { maxProxPct: 6, score: -2, label: "EAGLE" },
+      { maxProxPct: 11, score: -1, label: "BIRDIE" },
+      { maxProxPct: 16, score: 0, label: "PAR" },
+      { maxProxPct: 22, score: 1, label: "BOGEY" },
+      { maxProxPct: Infinity, score: 2, label: "DOUBLE" },
+    ],
+    rough: [
+      { maxProxPct: 8, score: -2, label: "EAGLE" },
+      { maxProxPct: 13, score: -1, label: "BIRDIE" },
+      { maxProxPct: 19, score: 0, label: "PAR" },
+      { maxProxPct: 27, score: 1, label: "BOGEY" },
+      { maxProxPct: Infinity, score: 2, label: "DOUBLE" },
+    ],
+    bunker: [
+      { maxProxPct: 9, score: -2, label: "EAGLE" },
+      { maxProxPct: 16, score: -1, label: "BIRDIE" },
+      { maxProxPct: 23, score: 0, label: "PAR" },
+      { maxProxPct: 32, score: 1, label: "BOGEY" },
+      { maxProxPct: Infinity, score: 2, label: "DOUBLE" },
+    ],
+  },
+  "10": {
+    fairway: [
+      { maxProxPct: 7, score: -2, label: "EAGLE" },
+      { maxProxPct: 12, score: -1, label: "BIRDIE" },
+      { maxProxPct: 17, score: 0, label: "PAR" },
+      { maxProxPct: 24, score: 1, label: "BOGEY" },
+      { maxProxPct: Infinity, score: 2, label: "DOUBLE" },
+    ],
+    rough: [
+      { maxProxPct: 8, score: -2, label: "EAGLE" },
+      { maxProxPct: 14, score: -1, label: "BIRDIE" },
+      { maxProxPct: 20, score: 0, label: "PAR" },
+      { maxProxPct: 28, score: 1, label: "BOGEY" },
+      { maxProxPct: Infinity, score: 2, label: "DOUBLE" },
+    ],
+    bunker: [
+      { maxProxPct: 10, score: -2, label: "EAGLE" },
+      { maxProxPct: 17, score: -1, label: "BIRDIE" },
+      { maxProxPct: 24, score: 0, label: "PAR" },
+      { maxProxPct: 34, score: 1, label: "BOGEY" },
+      { maxProxPct: Infinity, score: 2, label: "DOUBLE" },
+    ],
+  },
+  "15": {
+    fairway: [
+      { maxProxPct: 8, score: -2, label: "EAGLE" },
+      { maxProxPct: 15, score: -1, label: "BIRDIE" },
+      { maxProxPct: 21, score: 0, label: "PAR" },
+      { maxProxPct: 29, score: 1, label: "BOGEY" },
+      { maxProxPct: Infinity, score: 2, label: "DOUBLE" },
+    ],
+    rough: [
+      { maxProxPct: 10, score: -2, label: "EAGLE" },
+      { maxProxPct: 17, score: -1, label: "BIRDIE" },
+      { maxProxPct: 24, score: 0, label: "PAR" },
+      { maxProxPct: 34, score: 1, label: "BOGEY" },
+      { maxProxPct: Infinity, score: 2, label: "DOUBLE" },
+    ],
+    bunker: [
+      { maxProxPct: 12, score: -2, label: "EAGLE" },
+      { maxProxPct: 20, score: -1, label: "BIRDIE" },
+      { maxProxPct: 29, score: 0, label: "PAR" },
+      { maxProxPct: 41, score: 1, label: "BOGEY" },
+      { maxProxPct: Infinity, score: 2, label: "DOUBLE" },
+    ],
+  },
+  "20": {
+    fairway: [
+      { maxProxPct: 9, score: -2, label: "EAGLE" },
+      { maxProxPct: 16, score: -1, label: "BIRDIE" },
+      { maxProxPct: 23, score: 0, label: "PAR" },
+      { maxProxPct: 32, score: 1, label: "BOGEY" },
+      { maxProxPct: Infinity, score: 2, label: "DOUBLE" },
+    ],
+    rough: [
+      { maxProxPct: 11, score: -2, label: "EAGLE" },
+      { maxProxPct: 19, score: -1, label: "BIRDIE" },
+      { maxProxPct: 27, score: 0, label: "PAR" },
+      { maxProxPct: 38, score: 1, label: "BOGEY" },
+      { maxProxPct: Infinity, score: 2, label: "DOUBLE" },
+    ],
+    bunker: [
+      { maxProxPct: 13, score: -2, label: "EAGLE" },
+      { maxProxPct: 23, score: -1, label: "BIRDIE" },
+      { maxProxPct: 33, score: 0, label: "PAR" },
+      { maxProxPct: 46, score: 1, label: "BOGEY" },
+      { maxProxPct: Infinity, score: 2, label: "DOUBLE" },
+    ],
+  },
+  "25": {
+    fairway: [
+      { maxProxPct: 10, score: -2, label: "EAGLE" },
+      { maxProxPct: 18, score: -1, label: "BIRDIE" },
+      { maxProxPct: 26, score: 0, label: "PAR" },
+      { maxProxPct: 36, score: 1, label: "BOGEY" },
+      { maxProxPct: Infinity, score: 2, label: "DOUBLE" },
+    ],
+    rough: [
+      { maxProxPct: 12, score: -2, label: "EAGLE" },
+      { maxProxPct: 20, score: -1, label: "BIRDIE" },
+      { maxProxPct: 29, score: 0, label: "PAR" },
+      { maxProxPct: 41, score: 1, label: "BOGEY" },
+      { maxProxPct: Infinity, score: 2, label: "DOUBLE" },
+    ],
+    bunker: [
+      { maxProxPct: 14, score: -2, label: "EAGLE" },
+      { maxProxPct: 25, score: -1, label: "BIRDIE" },
+      { maxProxPct: 36, score: 0, label: "PAR" },
+      { maxProxPct: 50, score: 1, label: "BOGEY" },
+      { maxProxPct: Infinity, score: 2, label: "DOUBLE" },
+    ],
+  },
+  "30": {
+    fairway: [
+      { maxProxPct: 11, score: -2, label: "EAGLE" },
+      { maxProxPct: 20, score: -1, label: "BIRDIE" },
+      { maxProxPct: 28, score: 0, label: "PAR" },
+      { maxProxPct: 39, score: 1, label: "BOGEY" },
+      { maxProxPct: Infinity, score: 2, label: "DOUBLE" },
+    ],
+    rough: [
+      { maxProxPct: 13, score: -2, label: "EAGLE" },
+      { maxProxPct: 22, score: -1, label: "BIRDIE" },
+      { maxProxPct: 32, score: 0, label: "PAR" },
+      { maxProxPct: 45, score: 1, label: "BOGEY" },
+      { maxProxPct: Infinity, score: 2, label: "DOUBLE" },
+    ],
+    bunker: [
+      { maxProxPct: 16, score: -2, label: "EAGLE" },
+      { maxProxPct: 27, score: -1, label: "BIRDIE" },
+      { maxProxPct: 39, score: 0, label: "PAR" },
+      { maxProxPct: 55, score: 1, label: "BOGEY" },
+      { maxProxPct: Infinity, score: 2, label: "DOUBLE" },
+    ],
+  },
+};
+
+function shortGameProximityPct(targetYds, resultFt) {
+  return targetYds > 0 ? (Math.max(resultFt, 0) / (targetYds * 3)) * 100 : 0;
+}
+
+function shortGameScoreBand(lie, targetYds, resultFt) {
+  if (resultFt <= 0) return { score: -2, label: "EAGLE" }; // holed it — always the best band
+  const proxPct = shortGameProximityPct(targetYds, resultFt);
+  const tierBands = SHORTGAME_SCORE_BAND_SETS[currentBaselineKey] || SHORTGAME_SCORE_BAND_SETS.tour;
+  const bands = tierBands[lie] || tierBands.fairway;
+  return bands.find((b) => proxPct <= b.maxProxPct);
+}
+
+function scoreForShortGameShot(lie, targetYds, resultFt) {
+  return shortGameScoreBand(lie, targetYds, resultFt).score;
+}
+
+function labelForShortGameShot(lie, targetYds, resultFt) {
+  return shortGameScoreBand(lie, targetYds, resultFt).label;
+}
+
+// Explains Short Game's Par/Birdie/Eagle scoring — same mechanics as DistanceScoreInfoModal
+// above (reads the CURRENTLY ACTIVE baseline directly from module-level state, so it's always
+// showing the bands actually in effect), but broken out by lie since fairway/rough/bunker each
+// have their own bands at every tier.
+function ShortGameScoreInfoModal({ onClose }) {
+  const tierBands = SHORTGAME_SCORE_BAND_SETS[currentBaselineKey] || SHORTGAME_SCORE_BAND_SETS.tour;
+  const lieOrder = ["fairway", "rough", "bunker"];
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(10,22,15,0.75)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 24,
+        zIndex: 50,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: COLORS.turf,
+          border: `1px solid ${COLORS.creamDim}33`,
+          borderRadius: 14,
+          padding: 20,
+          maxWidth: 380,
+          width: "100%",
+          maxHeight: "85vh",
+          overflowY: "auto",
+        }}
+      >
+        <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 20, letterSpacing: 1, color: COLORS.cream }}>
+          PAR SCORING
+        </div>
+        <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 12, color: COLORS.cream, lineHeight: 1.55, marginTop: 8 }}>
+          Each shot is scored on how close it finished to the hole, as a percentage of the
+          distance you played the shot from — so a good result from 10 yards and a good result
+          from 40 yards score the same. Holing it is always Eagle. Fairway, rough, and bunker each
+          get their own bands, since a good bunker shot doesn't finish as close as a good fairway
+          shot.
+        </div>
+        <div
+          style={{
+            marginTop: 12,
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 10,
+            color: COLORS.creamDim,
+            letterSpacing: 1,
+          }}
+        >
+          CURRENT BASELINE: {activeDistanceScoreBaselineLabel()}
+        </div>
+        {lieOrder.map((lie) => {
+          const bands = tierBands[lie];
+          const rows = bands.map((b, i) =>
+            b.maxProxPct === Infinity
+              ? { label: b.label, desc: `Worse than ${bands[i - 1].maxProxPct}%`, score: b.score }
+              : { label: b.label, desc: `Within ${b.maxProxPct}%`, score: b.score }
+          );
+          return (
+            <div key={lie} style={{ marginTop: 12 }}>
+              <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: COLORS.sand, letterSpacing: 1 }}>
+                {LIE_LABELS[lie]}
+              </div>
+              <div style={{ marginTop: 4, border: `1px solid ${COLORS.creamDim}22`, borderRadius: 10, overflow: "hidden" }}>
+                {rows.map((r, i) => (
+                  <div
+                    key={r.label}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "7px 12px",
+                      borderTop: i === 0 ? "none" : `1px solid ${COLORS.creamDim}11`,
+                      fontFamily: "'JetBrains Mono', monospace",
+                      fontSize: 12,
+                    }}
+                  >
+                    <div style={{ color: toParColor(r.score), fontWeight: 600 }}>{r.label}</div>
+                    <div style={{ color: COLORS.creamDim, fontSize: 11 }}>{r.desc}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: COLORS.creamDim, marginTop: 12, lineHeight: 1.5 }}>
+          Change your baseline in Settings to switch bands — every level has its own for Short
+          Game, same as Distance Control.
+        </div>
+        <button
+          onClick={onClose}
+          style={{
+            width: "100%",
+            marginTop: 14,
+            padding: "10px 0",
+            borderRadius: 10,
+            border: "none",
+            background: COLORS.fairway,
+            color: COLORS.cream,
+            fontFamily: "'Bebas Neue', sans-serif",
+            fontSize: 16,
+            letterSpacing: 1,
+            cursor: "pointer",
+          }}
+        >
+          GOT IT
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function flattenPutts(sessions) {
@@ -1784,7 +2379,7 @@ function computePuttCompeteTallies(players, holeResults) {
 
 export default function GolfPracticeApp({ onSwitchProfile, profileName, profileId, profileHandicap }) {
   const [screen, setScreen] = useState("home"); // home | setup | practice | summary | analysis | shortgame | putting | puttingPractice | puttingSummary
-  const [shotCount, setShotCount] = useState(10);
+  const [shotCount, setShotCount] = useState(9);
   const [minDist, setMinDist] = useState(50);
   const [maxDist, setMaxDist] = useState(150);
   const [shots, setShots] = useState([]); // {target, actual, diff} or {target, rating}
@@ -1898,7 +2493,7 @@ export default function GolfPracticeApp({ onSwitchProfile, profileName, profileI
   const [clockStorageError, setClockStorageError] = useState(false);
 
   // ===== Putting — "Start Line" gate drill state =====
-  // 10 putts through a 15in gate set 15in in front of the putter — a start-line/face-control
+  // 10 putts through a gate (width is the player's choice) set ~15in in front of the ball — a start-line/face-control
   // drill, not a distance drill, so there's nothing to randomize and nothing per-putt to record:
   // the player just plays all 10 for real, then enters the one number at the end. Own storage
   // key + own (very small) history list, same reasoning as Around the Clock above.
@@ -5346,7 +5941,7 @@ function SetupScreen({
       <Card>
         <SectionLabel>Shots this session</SectionLabel>
         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-          {[10, 20, 50].map((n) => (
+          {[9, 18, 27].map((n) => (
             <PillOption key={n} label={n} active={shotCount === n} onClick={() => setShotCount(n)} />
           ))}
         </div>
@@ -5516,6 +6111,7 @@ function PracticeScreen({
   const shotNum = shots.length + 1;
   const unitLabel = longUnitLabel(units);
   const isRating = mode === "rating";
+  const [showScoreInfo, setShowScoreInfo] = useState(false);
 
   return (
     <div>
@@ -5652,6 +6248,45 @@ function PracticeScreen({
         </div>
       )}
 
+      {!isRating && (
+        <>
+          <div style={{ display: "flex", alignItems: "center", marginTop: 10 }}>
+            <div style={{ fontSize: 10, color: COLORS.creamDim, fontFamily: "'JetBrains Mono', monospace", letterSpacing: 1 }}>
+              PAR SCORING
+            </div>
+            <InlineInfoButton onClick={() => setShowScoreInfo(true)} />
+          </div>
+          <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
+            <StatBox
+              label="PREVIOUS SHOT"
+              value={
+                shots.length
+                  ? labelForDistanceShot(shots[shots.length - 1].target, shots[shots.length - 1].actual)
+                  : "—"
+              }
+              valueColor={
+                shots.length
+                  ? toParColor(scoreForDistanceShot(shots[shots.length - 1].target, shots[shots.length - 1].actual))
+                  : COLORS.cream
+              }
+            />
+            <StatBox
+              label="ROUND TO PAR"
+              value={
+                shots.length
+                  ? formatToPar(shots.reduce((a, s) => a + scoreForDistanceShot(s.target, s.actual), 0))
+                  : "E"
+              }
+              valueColor={
+                shots.length
+                  ? toParColor(shots.reduce((a, s) => a + scoreForDistanceShot(s.target, s.actual), 0))
+                  : COLORS.cream
+              }
+            />
+          </div>
+        </>
+      )}
+
       {shots.length > 0 && (
         <div style={{ marginTop: 10 }}>
           <SectionLabel>This session — tap a shot to amend</SectionLabel>
@@ -5674,6 +6309,8 @@ function PracticeScreen({
           onCancel={onCancelEditShot}
         />
       )}
+
+      {showScoreInfo && <DistanceScoreInfoModal onClose={() => setShowScoreInfo(false)} />}
     </div>
   );
 }
@@ -5717,6 +6354,7 @@ function ShotLog({ shots, units, onEditShot }) {
         <div style={{ flex: 1 }}>ACTUAL</div>
         <div style={{ width: 50, textAlign: "right" }}>MISS</div>
         <div style={{ width: 50, textAlign: "right" }}>SG</div>
+        <div style={{ width: 36, textAlign: "right" }}>PAR</div>
       </div>
       <div style={{ maxHeight: 150, overflowY: "auto" }}>
         {/* Newest shot first — display order only. Each row keeps its original index (i) for
@@ -5725,6 +6363,10 @@ function ShotLog({ shots, units, onEditShot }) {
         {shots.map((s, i) => i).reverse().map((i) => {
           const s = shots[i];
           const sg = sgForApproachShot(s.target, s.actual);
+          // Par/Birdie/Eagle score, computed live from the currently active baseline's bands —
+          // same as SG above, this is never stored, so it recolors historical shots if the
+          // player later changes their baseline in Settings.
+          const parScore = scoreForDistanceShot(s.target, s.actual);
           return (
             <div
               key={i}
@@ -5751,6 +6393,7 @@ function ShotLog({ shots, units, onEditShot }) {
                 {unitLabel}
               </div>
               <div style={{ width: 50, textAlign: "right", color: sgRagColor(sg) }}>{formatSG(sg)}</div>
+              <div style={{ width: 36, textAlign: "right", color: toParColor(parScore) }}>{formatToPar(parScore)}</div>
             </div>
           );
         })}
@@ -5809,6 +6452,7 @@ function RatingLog({ shots, units, onEditShot }) {
 function SummaryScreen({ shots, minDist, maxDist, onNewSession, storageError, units, feedback }) {
   const isRating = shots.length > 0 && shots[0].rating !== undefined;
   const unitLabel = longUnitLabel(units);
+  const [showScoreInfo, setShowScoreInfo] = useState(false);
 
   if (isRating) {
     const avgRating = avg(shots.map((s) => s.rating));
@@ -5876,6 +6520,7 @@ function SummaryScreen({ shots, minDist, maxDist, onNewSession, storageError, un
   const worst = shots.reduce((w, s) => (s.diff > w.diff ? s : w), shots[0]);
   const avgSG = avg(shots.map((s) => sgForApproachShot(s.target, s.actual)));
   const totalSG = shots.reduce((a, s) => a + sgForApproachShot(s.target, s.actual), 0);
+  const roundToPar = shots.reduce((a, s) => a + scoreForDistanceShot(s.target, s.actual), 0);
 
   return (
     <div>
@@ -5894,6 +6539,15 @@ function SummaryScreen({ shots, minDist, maxDist, onNewSession, storageError, un
         <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
           <StatBox label="TOTAL MISS" value={`${fmt1(ydsToUnit(total, units))}${unitLabel}`} />
           <StatBox label="AVG MISS" value={`${fmt1(ydsToUnit(average, units))}${unitLabel}`} />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", marginTop: 8 }}>
+          <div style={{ fontSize: 10, color: COLORS.creamDim, fontFamily: "'JetBrains Mono', monospace", letterSpacing: 1 }}>
+            PAR SCORING
+          </div>
+          <InlineInfoButton onClick={() => setShowScoreInfo(true)} />
+        </div>
+        <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
+          <StatBox label="ROUND TO PAR" value={formatToPar(roundToPar)} valueColor={toParColor(roundToPar)} />
         </div>
         <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
           <StatBox
@@ -5951,6 +6605,8 @@ function SummaryScreen({ shots, minDist, maxDist, onNewSession, storageError, un
       >
         NEW SESSION
       </button>
+
+      {showScoreInfo && <DistanceScoreInfoModal onClose={() => setShowScoreInfo(false)} />}
     </div>
   );
 }
@@ -6159,7 +6815,9 @@ function YardagePicker({ min, max, onMin, onMax, onPreset, activePresetLabel }) 
   );
 }
 
-function ChartTooltip({ active, payload, label, suffix }) {
+// `formatter`, when given, replaces the default "value.toFixed(1) + suffix" rendering entirely —
+// used for values like to-par scores where "+2" / "E" reads far better than "2.0".
+function ChartTooltip({ active, payload, label, suffix, formatter }) {
   if (!active || !payload || !payload.length) return null;
   return (
     <div
@@ -6176,8 +6834,14 @@ function ChartTooltip({ active, payload, label, suffix }) {
       <div style={{ color: COLORS.creamDim, marginBottom: 2 }}>{label}</div>
       {payload.map((p, i) => (
         <div key={i}>
-          {p.value.toFixed(1)}
-          {suffix}
+          {formatter ? (
+            formatter(p.value)
+          ) : (
+            <>
+              {p.value.toFixed(1)}
+              {suffix}
+            </>
+          )}
         </div>
       ))}
     </div>
@@ -6229,7 +6893,9 @@ function SettingsScreen({
         <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: COLORS.creamDim, marginTop: 4, lineHeight: 1.5 }}>
           Strokes gained everywhere in the app is measured against this level. Round-level data
           converted to a flat per-shot offset — a useful approximation, not a precise
-          distance-calibrated model like the PGA Tour numbers.
+          distance-calibrated model like the PGA Tour numbers. Distance Control's and Short
+          Game's Par/Birdie/Eagle scoring also follow this level — every tier from PGA Tour down
+          to 30 HCP has its own bands.
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6, marginTop: 12 }}>
           {BASELINE_OPTIONS.map((b) => (
@@ -6726,7 +7392,7 @@ function AddCoachScreen({ profileId, profileName, myCoachLinks, onBack }) {
   async function handleApply(coach) {
     setApplyingCoachId(coach.id);
     try {
-      await applyToCoach(profileId, profileName || "Player", coach.email || "", coach.id, coach.name);
+      await applyToCoach(profileId, profileName || "Player", auth.currentUser?.email || "", coach.id, coach.name);
     } catch (e) {
       setError("Couldn't send that request — try again.");
     } finally {
@@ -7227,6 +7893,10 @@ function shortGameSessionTrendData(sessions) {
       avgSG: avg(s.shots.map((sh) => sgForShortGameShot(sh.lie, sh.target, sh.resultFt))),
       avgResultFt: avg(s.shots.map((sh) => sh.resultFt)),
       shotCount: s.shots.length,
+      // Session's total to-par score, computed live from the currently active baseline's bands —
+      // never stored, same as everywhere else this scoring appears (see App.jsx Short Game
+      // scoring section, and Range's equivalent `roundToPar` field on sessionTrendData()).
+      roundToPar: s.shots.reduce((a, sh) => a + scoreForShortGameShot(sh.lie, sh.target, sh.resultFt), 0),
     }));
 }
 
@@ -7643,6 +8313,7 @@ function ShortGameAnalysisBody({ history, loaded, onDeleteSession, onEditSession
   const [printMode, triggerPrint] = usePrintMode();
   const [timescale, setTimescale] = useState("all");
   const [viewingSessionId, setViewingSessionId] = useState(null);
+  const [showScoreInfo, setShowScoreInfo] = useState(false);
   const viewingSession = viewingSessionId ? history.find((s) => s.id === viewingSessionId) : null;
 
   if (!loaded) {
@@ -7862,6 +8533,54 @@ function ShortGameAnalysisBody({ history, loaded, onDeleteSession, onEditSession
             </div>
           </Card>
 
+          <Card style={{ marginBottom: 14 }}>
+            <div style={{ display: "flex", alignItems: "center" }}>
+              <SectionLabel>Par scoring over time</SectionLabel>
+              <InlineInfoButton onClick={() => setShowScoreInfo(true)} />
+            </div>
+            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: COLORS.creamDim, marginTop: 2 }}>
+              Round to par per session, {activeDistanceScoreBaselineLabel()} baseline
+            </div>
+            <div style={{ height: 200, marginTop: 12 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={trend} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
+                  <CartesianGrid stroke={`${COLORS.creamDim}22`} vertical={false} />
+                  <XAxis
+                    dataKey="dateLabel"
+                    tick={{ fill: COLORS.creamDim, fontSize: 10, fontFamily: "JetBrains Mono, monospace" }}
+                    axisLine={{ stroke: `${COLORS.creamDim}33` }}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    tick={{ fill: COLORS.creamDim, fontSize: 10, fontFamily: "JetBrains Mono, monospace" }}
+                    axisLine={{ stroke: `${COLORS.creamDim}33` }}
+                    tickLine={false}
+                    tickFormatter={formatToPar}
+                    allowDecimals={false}
+                  />
+                  <ReferenceLine y={0} stroke={COLORS.creamDim} strokeDasharray="3 3" strokeOpacity={0.5} />
+                  <Tooltip content={<ChartTooltip formatter={formatToPar} />} />
+                  <Line
+                    type="monotone"
+                    dataKey="roundToPar"
+                    stroke={COLORS.flag}
+                    strokeWidth={2}
+                    dot={(props) => (
+                      <circle
+                        key={props.payload.date}
+                        cx={props.cx}
+                        cy={props.cy}
+                        r={3}
+                        fill={toParColor(props.payload.roundToPar)}
+                      />
+                    )}
+                    activeDot={{ r: 5 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+
           {lieStats.length > 0 && (
             <Card>
               <SectionLabel>Strokes gained by lie</SectionLabel>
@@ -7897,6 +8616,8 @@ function ShortGameAnalysisBody({ history, loaded, onDeleteSession, onEditSession
           )}
         </>
       )}
+
+      {showScoreInfo && <ShortGameScoreInfoModal onClose={() => setShowScoreInfo(false)} />}
 
       <SendReportButton onClick={triggerPrint} />
     </div>
@@ -8138,6 +8859,7 @@ function RangeAnalysisBody({ history, loaded, onDeleteSession, onEditSessionShot
   const [tab, setTab] = useState("insights"); // insights | graphs
   const [printMode, triggerPrint] = usePrintMode();
   const [timescale, setTimescale] = useState("all");
+  const [showScoreInfo, setShowScoreInfo] = useState(false);
   const [minYds, setMinYds] = useState(0);
   const [maxYds, setMaxYds] = useState(300);
   const [activePreset, setActivePreset] = useState("All");
@@ -8374,6 +9096,56 @@ function RangeAnalysisBody({ history, loaded, onDeleteSession, onEditSessionShot
                   </ResponsiveContainer>
                 </div>
               </Card>
+
+              <Card style={{ marginBottom: 14 }}>
+                <div style={{ display: "flex", alignItems: "center" }}>
+                  <SectionLabel>Par scoring over time</SectionLabel>
+                  <InlineInfoButton onClick={() => setShowScoreInfo(true)} />
+                </div>
+                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: COLORS.creamDim, marginTop: 2 }}>
+                  Round to par per session, {activeDistanceScoreBaselineLabel()} baseline, {minYds}-{maxYds}y shots only
+                </div>
+                <div style={{ height: 200, marginTop: 12 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={trend} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
+                      <CartesianGrid stroke={`${COLORS.creamDim}22`} vertical={false} />
+                      <XAxis
+                        dataKey="dateLabel"
+                        tick={{ fill: COLORS.creamDim, fontSize: 10, fontFamily: "JetBrains Mono, monospace" }}
+                        axisLine={{ stroke: `${COLORS.creamDim}33` }}
+                        tickLine={false}
+                      />
+                      <YAxis
+                        tick={{ fill: COLORS.creamDim, fontSize: 10, fontFamily: "JetBrains Mono, monospace" }}
+                        axisLine={{ stroke: `${COLORS.creamDim}33` }}
+                        tickLine={false}
+                        tickFormatter={formatToPar}
+                        allowDecimals={false}
+                      />
+                      <ReferenceLine y={0} stroke={COLORS.creamDim} strokeDasharray="3 3" strokeOpacity={0.5} />
+                      <Tooltip content={<ChartTooltip formatter={formatToPar} />} />
+                      <Line
+                        type="monotone"
+                        dataKey="roundToPar"
+                        stroke={COLORS.sand}
+                        strokeWidth={2}
+                        dot={(props) => (
+                          <circle
+                            key={props.payload.date}
+                            cx={props.cx}
+                            cy={props.cy}
+                            r={3}
+                            fill={toParColor(props.payload.roundToPar)}
+                          />
+                        )}
+                        activeDot={{ r: 5 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </Card>
+
+              {showScoreInfo && <DistanceScoreInfoModal onClose={() => setShowScoreInfo(false)} />}
 
               <Card>
                 <SectionLabel>Strokes gained by distance band</SectionLabel>
@@ -14110,16 +14882,20 @@ function ShortGameLog({ shots, units, onEditShot }) {
     >
       <div style={{ display: "flex", padding: "8px 12px", background: `${COLORS.turf}aa`, color: COLORS.creamDim }}>
         <div style={{ width: 22 }}>#</div>
-        <div style={{ width: 60 }}>LIE</div>
+        <div style={{ width: 52 }}>LIE</div>
         <div style={{ flex: 1 }}>DIST</div>
-        <div style={{ width: 55, textAlign: "right" }}>{shortLabel.toUpperCase()}</div>
-        <div style={{ width: 50, textAlign: "right" }}>SG</div>
+        <div style={{ width: 50, textAlign: "right" }}>{shortLabel.toUpperCase()}</div>
+        <div style={{ width: 44, textAlign: "right" }}>SG</div>
+        <div style={{ width: 36, textAlign: "right" }}>PAR</div>
       </div>
       <div style={{ maxHeight: 320, overflowY: "auto" }}>
         {/* Newest shot first — display order only; original index/number preserved (see ShotLog). */}
         {shots.map((s, i) => i).reverse().map((i) => {
           const s = shots[i];
           const sg = sgForShortGameShot(s.lie, s.target, s.resultFt);
+          // Par/Birdie/Eagle score, computed live from the currently active baseline's bands —
+          // same as SG, never stored, so it recolors historical shots if the baseline changes.
+          const parScore = scoreForShortGameShot(s.lie, s.target, s.resultFt);
           return (
             <div
               key={i}
@@ -14133,16 +14909,17 @@ function ShortGameLog({ shots, units, onEditShot }) {
               }}
             >
               <div style={{ width: 22, color: COLORS.creamDim }}>{i + 1}</div>
-              <div style={{ width: 60, fontSize: 10, color: COLORS.creamDim }}>{LIE_LABELS[s.lie]}</div>
+              <div style={{ width: 52, fontSize: 10, color: COLORS.creamDim }}>{LIE_LABELS[s.lie]}</div>
               <div style={{ flex: 1 }}>
                 {ydsToUnitRound(s.target, units)}
                 {yLabel}
               </div>
-              <div style={{ width: 55, textAlign: "right" }}>
+              <div style={{ width: 50, textAlign: "right" }}>
                 {fmt1(ftToUnit(s.resultFt, units))}
                 {shortLabel}
               </div>
-              <div style={{ width: 50, textAlign: "right", color: sgRagColor(sg) }}>{formatSG(sg)}</div>
+              <div style={{ width: 44, textAlign: "right", color: sgRagColor(sg) }}>{formatSG(sg)}</div>
+              <div style={{ width: 36, textAlign: "right", color: toParColor(parScore) }}>{formatToPar(parScore)}</div>
             </div>
           );
         })}
@@ -14380,6 +15157,7 @@ function ShortGamePracticeScreen({
   const liveAvgFt = shots.length ? avg(shots.map((s) => s.resultFt)) : null;
   const yLabel = longUnitLabel(units);
   const shortLabel = shortUnitLabel(units);
+  const [showScoreInfo, setShowScoreInfo] = useState(false);
 
   return (
     <div>
@@ -14506,6 +15284,41 @@ function ShortGamePracticeScreen({
         />
       </div>
 
+      <div style={{ display: "flex", alignItems: "center", marginTop: 10 }}>
+        <div style={{ fontSize: 10, color: COLORS.creamDim, fontFamily: "'JetBrains Mono', monospace", letterSpacing: 1 }}>
+          PAR SCORING
+        </div>
+        <InlineInfoButton onClick={() => setShowScoreInfo(true)} />
+      </div>
+      <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
+        <StatBox
+          label="PREVIOUS SHOT"
+          value={
+            shots.length
+              ? labelForShortGameShot(shots[shots.length - 1].lie, shots[shots.length - 1].target, shots[shots.length - 1].resultFt)
+              : "—"
+          }
+          valueColor={
+            shots.length
+              ? toParColor(scoreForShortGameShot(shots[shots.length - 1].lie, shots[shots.length - 1].target, shots[shots.length - 1].resultFt))
+              : COLORS.cream
+          }
+        />
+        <StatBox
+          label="ROUND TO PAR"
+          value={
+            shots.length
+              ? formatToPar(shots.reduce((a, s) => a + scoreForShortGameShot(s.lie, s.target, s.resultFt), 0))
+              : "E"
+          }
+          valueColor={
+            shots.length
+              ? toParColor(shots.reduce((a, s) => a + scoreForShortGameShot(s.lie, s.target, s.resultFt), 0))
+              : COLORS.cream
+          }
+        />
+      </div>
+
       {shots.length > 0 && (
         <div style={{ marginTop: 10 }}>
           <SectionLabel>This session — tap a shot to amend</SectionLabel>
@@ -14518,6 +15331,8 @@ function ShortGamePracticeScreen({
       {editingShotIndex !== null && (
         <ShortGameShotEditModal shot={shots[editingShotIndex]} units={units} onSave={onSaveEditShot} onCancel={onCancelEditShot} />
       )}
+
+      {showScoreInfo && <ShortGameScoreInfoModal onClose={() => setShowScoreInfo(false)} />}
     </div>
   );
 }
@@ -14779,6 +15594,8 @@ function ShortGameSummaryScreen({ shots, onNewSession, storageError, units, feed
   const best = sgValues.reduce((b, s) => (s.sg > b.sg ? s : b), sgValues[0]);
   const worst = sgValues.reduce((w, s) => (s.sg < w.sg ? s : w), sgValues[0]);
   const shortLabel = shortUnitLabel(units);
+  const roundToPar = shots.reduce((a, s) => a + scoreForShortGameShot(s.lie, s.target, s.resultFt), 0);
+  const [showScoreInfo, setShowScoreInfo] = useState(false);
 
   return (
     <div>
@@ -14798,6 +15615,15 @@ function ShortGameSummaryScreen({ shots, onNewSession, storageError, units, feed
             label={`AVG ${shortLabel.toUpperCase()} FROM HOLE`}
             value={`${fmt1(ftToUnit(avgResultFt, units))}${shortLabel}`}
           />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", marginTop: 8 }}>
+          <div style={{ fontSize: 10, color: COLORS.creamDim, fontFamily: "'JetBrains Mono', monospace", letterSpacing: 1 }}>
+            PAR SCORING
+          </div>
+          <InlineInfoButton onClick={() => setShowScoreInfo(true)} />
+        </div>
+        <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
+          <StatBox label="ROUND TO PAR" value={formatToPar(roundToPar)} valueColor={toParColor(roundToPar)} />
         </div>
         <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
           <StatBox label="BEST SHOT" value={formatSG(best.sg)} valueColor={sgRagColor(best.sg)} />
@@ -14836,6 +15662,8 @@ function ShortGameSummaryScreen({ shots, onNewSession, storageError, units, feed
       >
         NEW SESSION
       </button>
+
+      {showScoreInfo && <ShortGameScoreInfoModal onClose={() => setShowScoreInfo(false)} />}
     </div>
   );
 }
@@ -15758,14 +16586,14 @@ function PuttingStartLineIntroScreen({ history, onStart }) {
           START LINE
         </div>
         <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: COLORS.creamDim, marginTop: 2 }}>
-          10 putts through a 15in gate
+          10 putts through a gate
         </div>
       </div>
 
       <Card>
         <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: COLORS.cream, lineHeight: 1.6 }}>
-          Set up a gate about 15 inches wide, 15 inches in front of your putter face — two tees or
-          alignment sticks work fine. Hit 10 putts, aiming to roll the ball through the gate
+          Set up a gate with 2 tees, the width of your choosing, roughly 15 inches from your ball.
+          Hit 10 putts, aiming to roll the ball through the gate
           without touching either side. Play all 10 for real, then come back and enter how many
           got through clean — no need to confirm make or miss one at a time.
         </div>
@@ -15828,7 +16656,7 @@ function PuttingStartLinePlayScreen({ madeInput, setMadeInput, onSubmit, onExit 
       <Card>
         <div style={{ textAlign: "center" }}>
           <div style={{ fontSize: 11, color: COLORS.creamDim, fontFamily: "'JetBrains Mono', monospace", letterSpacing: 1.5 }}>
-            GATE — 15IN WIDE, 15IN AHEAD
+            GATE — WIDTH YOUR CHOICE, ~15IN AHEAD
           </div>
           <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 13, color: COLORS.creamDim, marginTop: 8, lineHeight: 1.5 }}>
             Play all 10 putts through the gate, then enter how many got through cleanly.
@@ -17334,12 +18162,305 @@ function FeetPicker({ min, max, onMin, onMax, onPreset, activePresetLabel }) {
 }
 
 const PUTTING_SUBTABS = [
+  { key: "overview", label: "OVERVIEW" },
   { key: "practice", label: "RANDOM" },
   { key: "clock", label: "AROUND THE CLOCK" },
   { key: "startline", label: "START LINE" },
   { key: "pace", label: "PACE CONTROL" },
   { key: "course", label: "ON COURSE" },
 ];
+
+// ===== Putting Overview — combines all 5 drills into one default landing summary =====
+// Random Practice, Around the Clock, and On Course all score in strokes gained against the same
+// sgForPutt baseline, so those three genuinely blend into one comparable headline number (just
+// concatenate their flattenPutts() rows — same function every one of those tabs already uses).
+// Start Line (% made) and Pace Control (avg pts/putt) use their own units and are NOT forced into
+// that blend — each gets its own row below, colored with the same rag function its own tab
+// already uses (paceRagColor), so the color language stays consistent without faking precision
+// by inventing a single cross-metric score.
+
+// Same recency thresholds as the Coach app's session-recency indicator (green <=7 days, amber
+// <=30 days, red older, dim/neutral if never played) — same signal, same app family, reused here
+// for consistency rather than inventing a new cutoff.
+function puttingRecencyColor(lastDate) {
+  if (!lastDate) return `${COLORS.creamDim}66`;
+  const days = (Date.now() - new Date(lastDate).getTime()) / 86400000;
+  if (days <= 7) return COLORS.fairwayLight;
+  if (days <= 30) return COLORS.sand;
+  return COLORS.flag;
+}
+
+function puttingRecencyLabel(lastDate) {
+  if (!lastDate) return "Not tried yet";
+  const days = Math.floor((Date.now() - new Date(lastDate).getTime()) / 86400000);
+  if (days <= 0) return "Today";
+  if (days === 1) return "Yesterday";
+  if (days < 30) return `${days}d ago`;
+  return `${Math.floor(days / 30)}mo ago`;
+}
+
+function latestSessionDate(sessions) {
+  if (!sessions.length) return null;
+  return sessions.reduce((latest, s) => (new Date(s.date) > new Date(latest) ? s.date : latest), sessions[0].date);
+}
+
+function PuttingOverviewAnalysisBody({
+  practiceHistory,
+  clockHistory,
+  startLineHistory,
+  paceHistory,
+  courseHistory,
+  allLoaded,
+  onNavigate,
+}) {
+  const [timescale, setTimescale] = useState("all");
+
+  if (!allLoaded) {
+    return <div style={{ color: COLORS.creamDim, fontFamily: "'JetBrains Mono', monospace" }}>Loading putting data…</div>;
+  }
+
+  const everLogged =
+    practiceHistory.length + clockHistory.length + startLineHistory.length + paceHistory.length + courseHistory.length;
+  if (everLogged === 0) {
+    return (
+      <div style={{ color: COLORS.creamDim, fontFamily: "'JetBrains Mono', monospace", fontSize: 13, marginTop: 10 }}>
+        No putting sessions logged yet across any drill. Play one to see your combined summary here.
+      </div>
+    );
+  }
+
+  const fPractice = filterByTimescale(practiceHistory, timescale);
+  const fClock = filterByTimescale(clockHistory, timescale);
+  const fStartLine = filterByTimescale(startLineHistory, timescale);
+  const fPace = filterByTimescale(paceHistory, timescale);
+  const fCourse = filterByTimescale(courseHistory, timescale);
+
+  // Random Practice and Around the Clock both log one row per REAL putt (flattenPutts is exact
+  // there). On Course is different — courseRoundTrendData/courseRoundStats already aggregate each
+  // hole's (possibly multi-putt) result into one totalSG/totalPutts(strokes) pair per round, the
+  // same convention OnCourseAnalysisBody's own "AVG SG / PUTT" already uses. Blending needs to
+  // weight by that real stroke count, not by hole count, or a 3-putt hole would get averaged in
+  // as if it were a single putt and understate on-course putting in the combined number.
+  const practicePutts = flattenPutts(fPractice);
+  const clockPutts = flattenPutts(fClock);
+  const courseTrend = courseRoundTrendData(fCourse);
+
+  const practiceClockSGTotal = practicePutts.reduce((a, r) => a + r.sg, 0) + clockPutts.reduce((a, r) => a + r.sg, 0);
+  const practiceClockPuttCount = practicePutts.length + clockPutts.length;
+  const courseSGTotal = courseTrend.reduce((a, r) => a + r.totalSG, 0);
+  const courseStrokeCount = courseTrend.reduce((a, r) => a + r.totalPutts, 0);
+  const blendedPuttCount = practiceClockPuttCount + courseStrokeCount;
+  const blendedAvgSG = blendedPuttCount ? (practiceClockSGTotal + courseSGTotal) / blendedPuttCount : null;
+
+  // Trend uses one point per SESSION/round (not one point per raw putt) so a multi-putt on-course
+  // hole doesn't get weighted differently than intended — same granularity each drill's own tab
+  // already trends at.
+  const combinedSessionSG = [
+    ...fPractice.map((s) => ({ date: s.date, avgSG: avg(s.putts.map((p) => sgForPutt(p.targetFt, p.strokes))) })),
+    ...fClock.map((s) => ({ date: s.date, avgSG: avg(s.putts.map((p) => sgForPutt(p.targetFt, p.strokes))) })),
+    ...courseTrend.map((r) => ({ date: r.date, avgSG: r.avgSG })),
+  ].sort((a, b) => new Date(a.date) - new Date(b.date));
+  let blendedTrendDelta = 0;
+  if (combinedSessionSG.length >= 4) {
+    const mid = Math.floor(combinedSessionSG.length / 2);
+    blendedTrendDelta =
+      avg(combinedSessionSG.slice(mid).map((r) => r.avgSG)) - avg(combinedSessionSG.slice(0, mid).map((r) => r.avgSG));
+  }
+
+  const startLinePutts = fStartLine.reduce((a, s) => a + (s.total || 10), 0);
+  const pacePutts = fPace.reduce((a, s) => a + (s.putts ? s.putts.length : 0), 0);
+  const totalPuttsLogged = blendedPuttCount + startLinePutts + pacePutts;
+  const totalSessionsLogged = fPractice.length + fClock.length + fStartLine.length + fPace.length + fCourse.length;
+
+  const rows = [];
+
+  {
+    const avgSG = practicePutts.length ? avg(practicePutts.map((r) => r.sg)) : null;
+    rows.push({
+      key: "practice",
+      label: "RANDOM PRACTICE",
+      value: avgSG !== null ? formatSG(avgSG) : "—",
+      sub: fPractice.length
+        ? `${fPractice.length} session${fPractice.length === 1 ? "" : "s"} · ${practicePutts.length} putts`
+        : "No sessions this period",
+      color: avgSG !== null ? sgRagColor(avgSG) : COLORS.creamDim,
+      lastPlayed: latestSessionDate(practiceHistory),
+    });
+  }
+
+  {
+    const avgMade = fClock.length ? avg(fClock.map((s) => s.made)) : null;
+    const pct = avgMade !== null ? (avgMade / 8) * 100 : null;
+    rows.push({
+      key: "clock",
+      label: "AROUND THE CLOCK",
+      value: avgMade !== null ? `${avgMade.toFixed(1)}/8` : "—",
+      sub: fClock.length ? `${fClock.length} round${fClock.length === 1 ? "" : "s"}` : "No rounds this period",
+      color: pct !== null ? paceRagColor(pct) : COLORS.creamDim,
+      lastPlayed: latestSessionDate(clockHistory),
+    });
+  }
+
+  {
+    const avgMade = fStartLine.length ? avg(fStartLine.map((s) => s.made)) : null;
+    const avgTotal = fStartLine.length ? avg(fStartLine.map((s) => s.total || 10)) : 10;
+    const pct = avgMade !== null ? Math.round((avgMade / avgTotal) * 100) : null;
+    rows.push({
+      key: "startline",
+      label: "START LINE",
+      value: pct !== null ? `${pct}%` : "—",
+      sub: fStartLine.length
+        ? `${fStartLine.length} round${fStartLine.length === 1 ? "" : "s"} · avg ${avgMade.toFixed(1)}/${avgTotal.toFixed(0)}`
+        : "No rounds this period",
+      color: pct !== null ? paceRagColor(pct) : COLORS.creamDim,
+      lastPlayed: latestSessionDate(startLineHistory),
+    });
+  }
+
+  {
+    const totalPoints = fPace.reduce((a, s) => a + s.totalPoints, 0);
+    const maxPoints = fPace.reduce((a, s) => a + s.maxPoints, 0);
+    const pct = maxPoints > 0 ? Math.round((totalPoints / maxPoints) * 100) : null;
+    rows.push({
+      key: "pace",
+      label: "PACE CONTROL",
+      value: pct !== null ? `${pct}%` : "—",
+      sub: fPace.length ? `${fPace.length} round${fPace.length === 1 ? "" : "s"}` : "No rounds this period",
+      color: pct !== null ? paceRagColor(pct) : COLORS.creamDim,
+      lastPlayed: latestSessionDate(paceHistory),
+    });
+  }
+
+  {
+    // Real stroke count (courseStrokeCount), not hole count — matches OnCourseAnalysisBody's own
+    // "AVG SG / PUTT" exactly, so this row's number is never out of sync with the drill's own tab.
+    const avgSG = courseStrokeCount ? courseSGTotal / courseStrokeCount : null;
+    rows.push({
+      key: "course",
+      label: "ON COURSE",
+      value: avgSG !== null ? formatSG(avgSG) : "—",
+      sub: fCourse.length
+        ? `${fCourse.length} round${fCourse.length === 1 ? "" : "s"} · ${courseStrokeCount} putts`
+        : "No rounds this period",
+      color: avgSG !== null ? sgRagColor(avgSG) : COLORS.creamDim,
+      lastPlayed: latestSessionDate(courseHistory),
+    });
+  }
+
+  const triedRows = rows.filter((r) => r.lastPlayed);
+  const neverTried = rows.filter((r) => !r.lastPlayed);
+  const redRows = triedRows.filter((r) => r.color === COLORS.flag);
+  const amberRows = triedRows.filter((r) => r.color === COLORS.sand);
+  const calloutBorder = redRows.length ? COLORS.flag : amberRows.length ? COLORS.sand : COLORS.creamDim;
+
+  return (
+    <div>
+      <TimescalePicker value={timescale} onChange={setTimescale} />
+
+      <Card style={{ marginBottom: 14, marginTop: 12 }}>
+        <SectionLabel>Overview</SectionLabel>
+        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: COLORS.creamDim, marginTop: 2 }}>
+          Every putting drill, combined
+        </div>
+        <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+          <StatBox label="SESSIONS" value={totalSessionsLogged} />
+          <StatBox label="PUTTS LOGGED" value={totalPuttsLogged} />
+        </div>
+        <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+          <StatBox
+            label="AVG SG / PUTT"
+            value={blendedAvgSG !== null ? formatSG(blendedAvgSG) : "—"}
+            valueColor={blendedAvgSG !== null ? sgRagColor(blendedAvgSG) : COLORS.cream}
+          />
+        </div>
+        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: COLORS.creamDim, marginTop: 8, lineHeight: 1.5 }}>
+          Blended across Random Practice, Around the Clock &amp; On Course — the three drills that
+          score in strokes gained. Start Line and Pace Control use their own scoring, shown below.
+        </div>
+        {sgRows.length >= 4 && (
+          <div style={{ marginTop: 10, fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }}>
+            {Math.abs(blendedTrendDelta) < 0.03 ? (
+              <span style={{ color: COLORS.creamDim }}>◆ Steady across this period</span>
+            ) : blendedTrendDelta > 0 ? (
+              <span style={{ color: COLORS.fairwayLight }}>
+                ▲ Trending better — SG up {blendedTrendDelta.toFixed(2)} from start to end of period
+              </span>
+            ) : (
+              <span style={{ color: COLORS.flag }}>
+                ▼ Trending worse — SG down {Math.abs(blendedTrendDelta).toFixed(2)} from start to end of period
+              </span>
+            )}
+          </div>
+        )}
+      </Card>
+
+      {(redRows.length > 0 || amberRows.length > 0 || neverTried.length > 0) && (
+        <Card style={{ marginBottom: 14, border: `1px solid ${calloutBorder}66` }}>
+          <SectionLabel>Focus area</SectionLabel>
+          {redRows.length > 0 ? (
+            <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 13, color: COLORS.cream, marginTop: 6, lineHeight: 1.5 }}>
+              Biggest opportunity: <strong>{redRows.map((r) => r.label).join(", ")}</strong> — tap below to dig into
+              the detail.
+            </div>
+          ) : amberRows.length > 0 ? (
+            <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 13, color: COLORS.cream, marginTop: 6, lineHeight: 1.5 }}>
+              Room to improve: <strong>{amberRows.map((r) => r.label).join(", ")}</strong>.
+            </div>
+          ) : (
+            <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 13, color: COLORS.fairwayLight, marginTop: 6, lineHeight: 1.5 }}>
+              Solid across every drill you've tried this period.
+            </div>
+          )}
+          {neverTried.length > 0 && (
+            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: COLORS.creamDim, marginTop: 8 }}>
+              Haven't tried yet: {neverTried.map((r) => r.label).join(", ")}
+            </div>
+          )}
+        </Card>
+      )}
+
+      <Card>
+        <SectionLabel>By drill — tap to dig in</SectionLabel>
+        {rows.map((r, i) => (
+          <div
+            key={r.key}
+            onClick={() => onNavigate(r.key)}
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              padding: "10px 0",
+              borderTop: i > 0 ? `1px solid ${COLORS.creamDim}15` : "none",
+              cursor: "pointer",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: "50%",
+                  background: puttingRecencyColor(r.lastPlayed),
+                  flexShrink: 0,
+                }}
+              />
+              <div>
+                <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 18, color: COLORS.cream }}>{r.label}</div>
+                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: COLORS.creamDim }}>
+                  {r.sub} · {puttingRecencyLabel(r.lastPlayed)}
+                </div>
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: r.color }}>{r.value}</div>
+              <div style={{ color: COLORS.creamDim, fontSize: 14 }}>›</div>
+            </div>
+          </div>
+        ))}
+      </Card>
+    </div>
+  );
+}
 
 function PuttingAnalysisHub({
   history,
@@ -17360,14 +18481,15 @@ function PuttingAnalysisHub({
   onEditPacePutt,
   units,
 }) {
-  const [subTab, setSubTab] = useState("practice"); // practice | clock | startline | pace | course
+  const [subTab, setSubTab] = useState("overview"); // overview | practice | clock | startline | pace | course
 
   const practiceHistory = history.filter((s) => s.type !== "course");
   const courseHistory = history.filter((s) => s.type === "course");
+  const allLoaded = loaded && clockLoaded && startLineLoaded && paceLoaded;
 
   return (
     <div>
-      {/* Five sub-tabs now — wraps to two rows on narrow screens rather than squeezing each
+      {/* Six sub-tabs now — wraps to two rows on narrow screens rather than squeezing each
           label unreadably thin. */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
         {PUTTING_SUBTABS.map((t) => (
@@ -17391,6 +18513,18 @@ function PuttingAnalysisHub({
           </button>
         ))}
       </div>
+
+      {subTab === "overview" && (
+        <PuttingOverviewAnalysisBody
+          practiceHistory={practiceHistory}
+          clockHistory={clockHistory}
+          startLineHistory={startLineHistory}
+          paceHistory={paceHistory}
+          courseHistory={courseHistory}
+          allLoaded={allLoaded}
+          onNavigate={setSubTab}
+        />
+      )}
 
       {subTab === "practice" && (
         <PuttingAnalysisBody
@@ -17815,7 +18949,7 @@ function PuttingStartLineAnalysisBody({ history, loaded, onDeleteSession, onEdit
       <Card style={{ marginBottom: 14, marginTop: 12 }}>
         <SectionLabel>Overview</SectionLabel>
         <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: COLORS.creamDim, marginTop: 2 }}>
-          10 putts through a 15in gate
+          10 putts through a gate
         </div>
         <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
           <StatBox label="ROUNDS PLAYED" value={filtered.length} />
