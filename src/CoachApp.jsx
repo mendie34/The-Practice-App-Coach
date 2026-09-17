@@ -42,24 +42,30 @@ function uid() {
 function daysAgo(n) {
   return Date.now() - n * 24 * 60 * 60 * 1000;
 }
+function daysAgoIso(n) {
+  return new Date(daysAgo(n)).toISOString();
+}
 function sampleRequests() {
   return [
     { id: uid(), playerId: "sample", playerName: "Jamie Reed", playerEmail: "jamie.reed@example.com", requestedAt: daysAgo(0.2) },
     { id: uid(), playerId: "sample", playerName: "Alicia Chen", playerEmail: "alicia.chen@example.com", requestedAt: daysAgo(1) },
   ];
 }
+// lastSessionDate is deliberately varied across the ten sample players (some inside 7 days, some
+// inside 30, some well past) so "Preview with sample players" actually demonstrates all three RAG
+// states on the roster grid, not just one.
 function sampleRoster() {
   return [
-    { id: uid(), playerName: "Sam Whitfield", playerEmail: "sam.whitfield@example.com", connectedAt: daysAgo(40) },
-    { id: uid(), playerName: "Priya Nair", playerEmail: "priya.nair@example.com", connectedAt: daysAgo(12) },
-    { id: uid(), playerName: "Tom Baxter", playerEmail: "tom.baxter@example.com", connectedAt: daysAgo(3) },
-    { id: uid(), playerName: "Elena Vance", playerEmail: "elena.vance@example.com", connectedAt: daysAgo(65) },
-    { id: uid(), playerName: "Marcus Lee", playerEmail: "marcus.lee@example.com", connectedAt: daysAgo(20) },
-    { id: uid(), playerName: "Grace Okafor", playerEmail: "grace.okafor@example.com", connectedAt: daysAgo(8) },
-    { id: uid(), playerName: "Noah Kessler", playerEmail: "noah.kessler@example.com", connectedAt: daysAgo(51) },
-    { id: uid(), playerName: "Aisha Malik", playerEmail: "aisha.malik@example.com", connectedAt: daysAgo(2) },
-    { id: uid(), playerName: "Ben Carrasco", playerEmail: "ben.carrasco@example.com", connectedAt: daysAgo(30) },
-    { id: uid(), playerName: "Lily Fontaine", playerEmail: "lily.fontaine@example.com", connectedAt: daysAgo(75) },
+    { id: uid(), playerName: "Sam Whitfield", playerEmail: "sam.whitfield@example.com", connectedAt: daysAgo(40), lastSessionDate: daysAgoIso(2) },
+    { id: uid(), playerName: "Priya Nair", playerEmail: "priya.nair@example.com", connectedAt: daysAgo(12), lastSessionDate: daysAgoIso(14) },
+    { id: uid(), playerName: "Tom Baxter", playerEmail: "tom.baxter@example.com", connectedAt: daysAgo(3), lastSessionDate: daysAgoIso(0.5) },
+    { id: uid(), playerName: "Elena Vance", playerEmail: "elena.vance@example.com", connectedAt: daysAgo(65), lastSessionDate: daysAgoIso(52) },
+    { id: uid(), playerName: "Marcus Lee", playerEmail: "marcus.lee@example.com", connectedAt: daysAgo(20), lastSessionDate: daysAgoIso(21) },
+    { id: uid(), playerName: "Grace Okafor", playerEmail: "grace.okafor@example.com", connectedAt: daysAgo(8), lastSessionDate: daysAgoIso(4) },
+    { id: uid(), playerName: "Noah Kessler", playerEmail: "noah.kessler@example.com", connectedAt: daysAgo(51), lastSessionDate: daysAgoIso(90) },
+    { id: uid(), playerName: "Aisha Malik", playerEmail: "aisha.malik@example.com", connectedAt: daysAgo(2), lastSessionDate: daysAgoIso(1) },
+    { id: uid(), playerName: "Ben Carrasco", playerEmail: "ben.carrasco@example.com", connectedAt: daysAgo(30), lastSessionDate: daysAgoIso(29) },
+    { id: uid(), playerName: "Lily Fontaine", playerEmail: "lily.fontaine@example.com", connectedAt: daysAgo(75), lastSessionDate: null },
   ];
 }
 
@@ -69,6 +75,23 @@ function formatRelative(ts) {
   if (days === 1) return "yesterday";
   if (days < 30) return `${days} days ago`;
   return new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+// RAG status for a roster tile, based on how long ago the player last logged ANY practice
+// session (across every section — see realStats.js's lastSessionDate). Thresholds per the coach's
+// own spec: last 7 days = green, last 30 days = amber, older than that = red. No sessions logged
+// yet at all gets a neutral/dim outline rather than red, since "never logged" isn't the same
+// signal as "went quiet" — a brand-new connection shouldn't look alarming.
+function sessionRagColor(lastSessionDate) {
+  if (!lastSessionDate) return `${COLORS.creamDim}30`;
+  const days = (Date.now() - new Date(lastSessionDate).getTime()) / (24 * 60 * 60 * 1000);
+  if (days <= 7) return COLORS.fairwayLight;
+  if (days <= 30) return COLORS.sand;
+  return COLORS.flag;
+}
+function lastSessionLabel(lastSessionDate) {
+  if (!lastSessionDate) return "No sessions yet";
+  return formatRelative(new Date(lastSessionDate).getTime());
 }
 function getInitials(name) {
   const parts = name.trim().split(/\s+/);
@@ -217,6 +240,7 @@ function EmptyState({ title, body, actionLabel, onAction }) {
 // ===== Player block (grid tile) — small, uniform-colored, phone-friendly =====
 function PlayerBlock({ player, onClick, selectMode, selected, atCap }) {
   const disabled = selectMode && atCap && !selected;
+  const ragColor = sessionRagColor(player.lastSessionDate);
   return (
     <div
       onClick={disabled ? undefined : onClick}
@@ -226,7 +250,7 @@ function PlayerBlock({ player, onClick, selectMode, selected, atCap }) {
         borderRadius: 10,
         overflow: "hidden",
         cursor: disabled ? "not-allowed" : "pointer",
-        border: selected ? `2px solid ${COLORS.fairwayLight}` : `1px solid ${COLORS.creamDim}22`,
+        border: selected ? `2px solid ${COLORS.fairwayLight}` : `2px solid ${ragColor}`,
         background: PLAYER_BOX_GRADIENT,
         opacity: disabled ? 0.4 : 1,
       }}
@@ -280,6 +304,22 @@ function PlayerBlock({ player, onClick, selectMode, selected, atCap }) {
           }}
         >
           {player.playerName}
+        </div>
+        <div
+          style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 9,
+            letterSpacing: 0.2,
+            lineHeight: 1.2,
+            color: COLORS.creamDim,
+            textShadow: "0 1px 4px rgba(0,0,0,0.5)",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            marginTop: 1,
+          }}
+        >
+          {lastSessionLabel(player.lastSessionDate)}
         </div>
       </div>
     </div>
@@ -1264,6 +1304,16 @@ export default function CoachApp({ uid, profile, onSignOut }) {
   const displayedRequests = previewMode ? previewRequests || [] : requests;
   const displayedRoster = previewMode ? previewRoster || [] : roster;
 
+  // Real players' last-session date (for the dashboard grid's date-under-name + RAG outline)
+  // comes from the same per-player real-stats fetch the overview/compare screens already use —
+  // see realStats.js's lastSessionDate field on computeStatsFromAppData's return. Preview/sample
+  // players already carry their own lastSessionDate directly on the sample player object.
+  const { statsById: rosterStatsById } = usePlayerStatsMap(previewMode ? [] : displayedRoster.map((p) => p.id));
+  const dashboardRoster = displayedRoster.map((p) => ({
+    ...p,
+    lastSessionDate: previewMode ? p.lastSessionDate ?? null : rosterStatsById[p.id]?.lastSessionDate ?? null,
+  }));
+
   function handleLoadSample() {
     setPreviewRequests(sampleRequests());
     setPreviewRoster(sampleRoster());
@@ -1374,7 +1424,7 @@ export default function CoachApp({ uid, profile, onSignOut }) {
         {screen === "dashboard" && (
           <DashboardScreen
             requests={displayedRequests}
-            roster={displayedRoster}
+            roster={dashboardRoster}
             onOpenRequests={() => setScreen("requests")}
             onOpenPlayer={handleOpenPlayer}
             onLoadSample={handleLoadSample}
