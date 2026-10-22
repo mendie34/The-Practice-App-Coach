@@ -434,6 +434,7 @@ function DashboardScreen({
   compareMode,
   compareSelected,
   onStartCompare,
+  onOpenLeaderboard,
   onToggleCompareSelect,
   onCancelCompare,
   onConfirmCompare,
@@ -505,8 +506,21 @@ function DashboardScreen({
 
           {!compareMode ? (
             <>
-              <button onClick={onStartCompare} disabled={roster.length < 2} style={{ ...primaryButtonStyle(roster.length < 2), marginTop: 20 }}>
+              <button onClick={onStartCompare} disabled={roster.length < 2} style={{ ...compareButtonStyle(roster.length < 2), marginTop: 20 }}>
                 COMPARE PLAYERS
+              </button>
+              <button
+                onClick={onOpenLeaderboard}
+                disabled={roster.length < 1}
+                style={{
+                  ...primaryButtonStyle(roster.length < 1),
+                  marginTop: 10,
+                  background: "transparent",
+                  border: `1px solid ${roster.length < 1 ? COLORS.fairway + "55" : COLORS.fairway}`,
+                  color: COLORS.fairway,
+                }}
+              >
+                LEADERBOARD
               </button>
               {roster.length > 0 && roster.length < 2 && (
                 <div
@@ -546,7 +560,7 @@ function DashboardScreen({
                 <button
                   onClick={onConfirmCompare}
                   disabled={compareSelected.length < 2}
-                  style={{ ...primaryButtonStyle(compareSelected.length < 2), marginTop: 0, flex: 1 }}
+                  style={{ ...compareButtonStyle(compareSelected.length < 2), marginTop: 0, flex: 1 }}
                 >
                   CONFIRM {compareSelected.length > 0 ? `(${compareSelected.length})` : ""}
                 </button>
@@ -587,6 +601,11 @@ function primaryButtonStyle(disabled) {
     letterSpacing: 1,
     cursor: disabled ? "not-allowed" : "pointer",
   };
+}
+
+// Compare / Confirm use the brand green rather than the red used for other primary actions.
+function compareButtonStyle(disabled) {
+  return { ...primaryButtonStyle(disabled), background: disabled ? `${COLORS.fairway}66` : COLORS.fairway };
 }
 
 // ===== Requests review screen =====
@@ -1320,6 +1339,156 @@ function CompareResultsScreen({ roster, selected, previewMode }) {
   );
 }
 
+// ===== Leaderboard: average SG across the roster, with a tab per category =====
+const LEADERBOARD_TABS = [
+  { key: "overall", label: "OVERALL" },
+  ...SECTION_META.map((m) => ({
+    key: m.key,
+    label: { range: "RANGE", teeAccuracy: "TEE ACC.", shortGame: "SHORT GAME", puttingPractice: "PUTT PRACTICE", puttingCourse: "PUTT COURSE" }[m.key],
+    metricType: m.metricType,
+  })),
+];
+const SG_SECTION_KEYS = SECTION_META.filter((m) => m.metricType === "sg").map((m) => m.key);
+
+// Overall = mean of the strokes-gained categories the player has actually logged sessions in.
+// Tee Accuracy is a fairway % rather than SG, so it only appears on its own tab.
+function leaderboardValue(stats, tabKey) {
+  if (tabKey === "overall") {
+    const active = SG_SECTION_KEYS.filter((k) => stats[k] && stats[k].sessionCount > 0);
+    if (!active.length) return { value: null, sessions: 0 };
+    const avg = active.reduce((a, k) => a + stats[k].overallAvgSG, 0) / active.length;
+    return { value: Number(avg.toFixed(2)), sessions: active.reduce((a, k) => a + stats[k].sessionCount, 0) };
+  }
+  const sec = stats[tabKey];
+  if (!sec || !sec.sessionCount) return { value: null, sessions: 0 };
+  return { value: tabKey === "teeAccuracy" ? sec.overallHitPct : sec.overallAvgSG, sessions: sec.sessionCount };
+}
+
+function LeaderboardScreen({ roster, previewMode }) {
+  const [tabKey, setTabKey] = useState("overall");
+  const playerIds = useMemo(() => roster.map((p) => p.id), [roster]);
+  const { statsById } = usePlayerStatsMap(previewMode ? [] : playerIds);
+  const isPct = tabKey === "teeAccuracy";
+
+  const rows = roster
+    .map((player) => {
+      const stats = previewMode ? buildSampleStats(player) : statsById[player.id] || EMPTY_STATS;
+      return { player, ...leaderboardValue(stats, tabKey) };
+    })
+    .sort((a, b) => {
+      if (a.value === null && b.value === null) return a.player.playerName.localeCompare(b.player.playerName);
+      if (a.value === null) return 1;
+      if (b.value === null) return -1;
+      return b.value - a.value;
+    });
+
+  const tabBtn = (t) => {
+    const active = t.key === tabKey;
+    return (
+      <button
+        key={t.key}
+        onClick={() => setTabKey(t.key)}
+        style={{
+          padding: "9px 4px",
+          borderRadius: 10,
+          border: `1px solid ${active ? COLORS.fairway : COLORS.creamDim + "33"}`,
+          background: active ? `${COLORS.fairway}26` : "transparent",
+          color: active ? COLORS.fairway : COLORS.creamDim,
+          fontFamily: SYS_FONT,
+          fontSize: 10,
+          fontWeight: 700,
+          letterSpacing: 0.5,
+          cursor: "pointer",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {t.label}
+      </button>
+    );
+  };
+
+  return (
+    <div>
+      <div style={{ marginBottom: 16 }}>
+        <SectionLabel>LEADERBOARD</SectionLabel>
+        <div style={{ fontFamily: SYS_FONT, fontSize: 24, marginTop: 2 }}>
+          {tabKey === "overall" ? "Average strokes gained" : SECTION_META.find((m) => m.key === tabKey).label}
+        </div>
+        <div style={{ fontFamily: SYS_FONT, fontSize: 10, color: COLORS.creamDim, marginTop: 4 }}>
+          {tabKey === "overall"
+            ? `Mean of each player's SG categories · vs ${BASELINE_LABEL}`
+            : isPct
+            ? "Fairways hit % (not strokes gained)"
+            : `Average SG per shot · vs ${BASELINE_LABEL}`}
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 16 }}>
+        {LEADERBOARD_TABS.map(tabBtn)}
+      </div>
+
+      <Card style={{ padding: "4px 14px" }}>
+        {rows.map((r, i) => {
+          const hasValue = r.value !== null;
+          const color = !hasValue ? COLORS.creamDim : isPct ? ratingRagColor(r.value / 20) : sgRagColor(r.value);
+          return (
+            <div
+              key={r.player.id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "11px 0",
+                borderTop: i === 0 ? "none" : `1px solid ${COLORS.creamDim}15`,
+              }}
+            >
+              <div
+                style={{
+                  width: 26,
+                  height: 26,
+                  borderRadius: "50%",
+                  flexShrink: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontFamily: SYS_FONT,
+                  fontWeight: 700,
+                  fontSize: 12,
+                  background: hasValue && i === 0 ? COLORS.fairway : `${COLORS.fairway}26`,
+                  color: hasValue && i === 0 ? COLORS.cream : COLORS.fairway,
+                }}
+              >
+                {hasValue ? i + 1 : "–"}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    fontFamily: SYS_FONT,
+                    fontWeight: 600,
+                    fontSize: 14,
+                    color: COLORS.cream,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {r.player.playerName}
+                </div>
+                <div style={{ fontFamily: SYS_FONT, fontSize: 10, color: COLORS.creamDim, marginTop: 2 }}>
+                  {hasValue ? `${r.sessions} sess.` : "No sessions yet"}
+                </div>
+              </div>
+              <div style={{ fontFamily: SYS_FONT, fontWeight: 700, fontSize: 18, color }}>
+                {hasValue ? (isPct ? `${r.value}%` : formatSG(r.value)) : "—"}
+              </div>
+            </div>
+          );
+        })}
+      </Card>
+    </div>
+  );
+}
+
 // ===== Settings =====
 function SettingsScreen({ profile, onSignOut, previewMode, onExitPreview, onBack }) {
   return (
@@ -1435,6 +1604,7 @@ export default function CoachApp({ uid, profile, onSignOut }) {
     playerDetail: "dashboard",
     playerSection: "playerDetail",
     compare: "dashboard",
+    leaderboard: "dashboard",
     settings: "dashboard",
   };
 
@@ -1584,6 +1754,7 @@ export default function CoachApp({ uid, profile, onSignOut }) {
             compareMode={compareMode}
             compareSelected={compareSelected}
             onStartCompare={handleStartCompare}
+            onOpenLeaderboard={() => setScreen("leaderboard")}
             onToggleCompareSelect={handleToggleCompareSelect}
             onCancelCompare={handleCancelCompare}
             onConfirmCompare={handleConfirmCompare}
@@ -1610,6 +1781,8 @@ export default function CoachApp({ uid, profile, onSignOut }) {
         {screen === "compare" && (
           <CompareResultsScreen roster={displayedRoster} selected={compareSelected} previewMode={previewMode} />
         )}
+
+        {screen === "leaderboard" && <LeaderboardScreen roster={displayedRoster} previewMode={previewMode} />}
 
         {screen === "settings" && (
           <SettingsScreen profile={profile} onSignOut={onSignOut} previewMode={previewMode} onExitPreview={handleExitPreview} onBack={() => setScreen("dashboard")} />
