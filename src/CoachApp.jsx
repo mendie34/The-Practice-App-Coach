@@ -33,6 +33,7 @@ export const COLORS = {
 
 // The player app moved all display/label text off Bebas Neue + JetBrains Mono onto the native
 // system UI stack — same here so both apps read as one product.
+const PAGE_TITLE = { fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif", fontSize: 24, letterSpacing: 1, lineHeight: 1.1, marginTop: 2, color: "#F2F0EB", textTransform: "uppercase" };
 const SYS_FONT = "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 
 // Real static assets (public/logo.png, public/logo-coach.png) — replaces the demo's inline
@@ -161,7 +162,7 @@ export function Card({ children, style, onClick }) {
 }
 export function SectionLabel({ children }) {
   return (
-    <div style={{ fontSize: 11, color: COLORS.creamDim, fontFamily: SYS_FONT, letterSpacing: 1.5 }}>
+    <div style={{ fontSize: 11, color: COLORS.creamDim, fontFamily: SYS_FONT, letterSpacing: 1.5, textTransform: "uppercase" }}>
       {children}
     </div>
   );
@@ -177,7 +178,8 @@ export function CoachBadge({ style }) {
         color: COLORS.turfDark,
         background: COLORS.sand,
         borderRadius: 5,
-        padding: "2px 7px",
+        padding: "3px 7px",
+        lineHeight: 1,
         ...style,
       }}
     >
@@ -294,7 +296,7 @@ function CoachHeader({ screen, backTarget, onHome, onSettings, onBack }) {
     >
       <div onClick={onHome} style={{ display: "flex", alignItems: "center", gap: 7, cursor: "pointer" }}>
         <img src={LOGO_SRC} alt="" style={{ width: 20, height: 20, flexShrink: 0 }} />
-        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{ fontFamily: SYS_FONT, fontSize: 19, letterSpacing: 0.5, lineHeight: 1, color: COLORS.cream }}>
             THE PRACTICE APP
           </div>
@@ -445,7 +447,7 @@ function DashboardScreen({
     <div>
       <div style={{ marginBottom: 16 }}>
         <SectionLabel>{compareMode ? "COMPARE" : "WELCOME BACK"}</SectionLabel>
-        <div style={{ fontFamily: SYS_FONT, fontSize: 26, marginTop: 2 }}>
+        <div style={PAGE_TITLE}>
           {compareMode ? `Select up to ${MAX_COMPARE} players` : "Your players"}
         </div>
       </div>
@@ -656,7 +658,7 @@ function RequestsScreen({ requests, onApprove, onDecline, busyId }) {
     <div>
       <div style={{ marginBottom: 16 }}>
         <SectionLabel>PENDING REQUESTS</SectionLabel>
-        <div style={{ fontFamily: SYS_FONT, fontSize: 24, marginTop: 2 }}>Review requests</div>
+        <div style={PAGE_TITLE}>Review requests</div>
       </div>
       {requests.length === 0 ? (
         <EmptyState title="All caught up" body="No pending requests right now." />
@@ -1123,7 +1125,7 @@ function PlayerSectionScreen({ player, sectionKey, previewMode }) {
         <IconChip Icon={meta.Icon} size={40} />
         <div>
           <SectionLabel>{player.playerName.toUpperCase()}</SectionLabel>
-          <div style={{ fontFamily: SYS_FONT, fontSize: 24, marginTop: 2 }}>{meta.label}</div>
+          <div style={PAGE_TITLE}>{meta.label}</div>
         </div>
       </div>
 
@@ -1277,7 +1279,7 @@ function CompareResultsScreen({ roster, selected, previewMode }) {
     <div>
       <div style={{ marginBottom: 16 }}>
         <SectionLabel>COMPARE</SectionLabel>
-        <div style={{ fontFamily: SYS_FONT, fontSize: 24, marginTop: 2 }}>
+        <div style={PAGE_TITLE}>
           {compareEntries.length} players
         </div>
       </div>
@@ -1411,7 +1413,7 @@ function LeaderboardScreen({ roster, previewMode }) {
     <div>
       <div style={{ marginBottom: 16 }}>
         <SectionLabel>LEADERBOARD</SectionLabel>
-        <div style={{ fontFamily: SYS_FONT, fontSize: 24, marginTop: 2 }}>
+        <div style={PAGE_TITLE}>
           {tabKey === "overall" ? "Average strokes gained" : SECTION_META.find((m) => m.key === tabKey).label}
         </div>
         <div style={{ fontFamily: SYS_FONT, fontSize: 10, color: COLORS.creamDim, marginTop: 4 }}>
@@ -1494,7 +1496,7 @@ function SettingsScreen({ profile, onSignOut, previewMode, onExitPreview, onBack
   return (
     <div>
       <div style={{ marginBottom: 16 }}>
-        <div style={{ fontFamily: SYS_FONT, fontSize: 24, letterSpacing: 1, lineHeight: 1, color: COLORS.cream }}>SETTINGS</div>
+        <div style={{ ...PAGE_TITLE, marginTop: 0 }}>SETTINGS</div>
       </div>
 
       <Card style={{ marginBottom: 12 }}>
