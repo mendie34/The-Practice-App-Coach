@@ -13,20 +13,27 @@ export const FONT_IMPORT = `@import url('https://fonts.googleapis.com/css2?famil
 @media print {
   .no-print { display: none !important; }
   .print-only { display: block !important; }
-  * { color: #14291F !important; background: #ffffff !important; border-color: #ccc !important; box-shadow: none !important; }
+  * { color: #1C1C1A !important; background: #ffffff !important; border-color: #ccc !important; box-shadow: none !important; }
 }
-.print-only { display: none; }`;
+.print-only { display: none; }
+input, select, textarea { min-width: 0; box-sizing: border-box; }
+input:focus, select:focus, textarea:focus { outline: 2px solid #3FA377; outline-offset: 0; }
+button { font-family: inherit; }`;
 
 export const COLORS = {
-  turfDark: "#14291F",
-  turf: "#1D3A2B",
-  fairway: "#2F6B4F",
-  fairwayLight: "#4C8A68",
-  cream: "#F1EAD6",
-  creamDim: "#E4DBC2",
-  flag: "#C1440E",
-  sand: "#C9A66B",
+  turfDark: "#1C1C1A",
+  turf: "#262624",
+  fairway: "#3FA377",
+  fairwayLight: "#4CAF7D",
+  cream: "#F2F0EB",
+  creamDim: "#9a9a94",
+  flag: "#E0655A",
+  sand: "#D9AA4C",
 };
+
+// The player app moved all display/label text off Bebas Neue + JetBrains Mono onto the native
+// system UI stack — same here so both apps read as one product.
+const SYS_FONT = "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 
 // Real static assets (public/logo.png, public/logo-coach.png) — replaces the demo's inline
 // base64 data URIs now that this is a normal deployed web app with a public/ folder.
@@ -101,7 +108,6 @@ function getInitials(name) {
 // One consistent color for every player identity box (dashboard tiles, avatar circles) — not
 // to be confused with COMPARE_COLORS below, which is intentionally per-player-distinct because
 // that's the whole point of the compare charts.
-const PLAYER_BOX_GRADIENT = `linear-gradient(160deg, ${COLORS.fairwayLight} 0%, ${COLORS.turfDark} 100%)`;
 
 // One consistent color per player across every compare chart, so e.g. "Priya" is the same
 // color in the Range chart as in the Putting chart. Assigned by selection order, not name hash,
@@ -130,7 +136,7 @@ const headerBtnStyle = {
   background: "none",
   border: `1px solid ${COLORS.creamDim}55`,
   color: COLORS.creamDim,
-  fontFamily: "'JetBrains Mono', monospace",
+  fontFamily: SYS_FONT,
   fontSize: 10,
   padding: "4px 7px",
   borderRadius: 6,
@@ -155,7 +161,7 @@ export function Card({ children, style, onClick }) {
 }
 export function SectionLabel({ children }) {
   return (
-    <div style={{ fontSize: 11, color: COLORS.creamDim, fontFamily: "'JetBrains Mono', monospace", letterSpacing: 1.5 }}>
+    <div style={{ fontSize: 11, color: COLORS.creamDim, fontFamily: SYS_FONT, letterSpacing: 1.5 }}>
       {children}
     </div>
   );
@@ -165,7 +171,7 @@ export function CoachBadge({ style }) {
     <div
       style={{
         display: "inline-block",
-        fontFamily: "'JetBrains Mono', monospace",
+        fontFamily: SYS_FONT,
         fontSize: 10,
         letterSpacing: 1.5,
         color: COLORS.turfDark,
@@ -180,8 +186,107 @@ export function CoachBadge({ style }) {
   );
 }
 
+// ----- Tile icons, copied verbatim from the player app (App.jsx "TILE ICONS") so each section
+// is represented by the exact same mark in both apps. Small single-colour stroke icons in
+// COLORS.fairway, always shown on a green-tint rounded chip (IconChip) like the player's Home
+// tiles. PeopleIcon matches the extra "people" icon used on the marketing site. -----
+function iconSvgProps(size) {
+  return {
+    width: size,
+    height: size,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: COLORS.fairway,
+    strokeWidth: "2",
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+  };
+}
+function RangeIcon({ size = 18 }) {
+  return (
+    <svg {...iconSvgProps(size)}>
+      <circle cx="12" cy="12" r="10" />
+      <circle cx="12" cy="12" r="6" />
+      <circle cx="12" cy="12" r="2" />
+    </svg>
+  );
+}
+function TeeAccuracyIcon({ size = 18 }) {
+  return (
+    <svg {...iconSvgProps(size)}>
+      <line x1="12" y1="2" x2="12" y2="22" />
+      <circle cx="12" cy="8" r="5" />
+    </svg>
+  );
+}
+function ShortGameIcon({ size = 18 }) {
+  return (
+    <svg {...iconSvgProps(size)}>
+      <path d="M4 20 L17 5" />
+      <path d="M17 5 L21 3 L19 7 Z" fill={COLORS.fairway} stroke="none" />
+      <circle cx="6" cy="19" r="1.4" fill={COLORS.fairway} stroke="none" />
+    </svg>
+  );
+}
+function PuttingIcon({ size = 18 }) {
+  return (
+    <svg {...iconSvgProps(size)}>
+      <line x1="12" y1="3" x2="12" y2="21" />
+      <path d="M12 3 L19 6 L12 9 Z" fill={COLORS.fairway} stroke="none" />
+      <ellipse cx="12" cy="21" rx="7" ry="1.6" />
+    </svg>
+  );
+}
+function OnCourseIcon({ size = 18 }) {
+  return (
+    <svg {...iconSvgProps(size)}>
+      <rect x="4" y="3" width="16" height="18" rx="2" />
+      <line x1="8" y1="8" x2="16" y2="8" />
+      <line x1="8" y1="12" x2="16" y2="12" />
+      <path d="M8 16 L10 18 L16 15" />
+    </svg>
+  );
+}
+function CompareIcon({ size = 18 }) {
+  return (
+    <svg {...iconSvgProps(size)}>
+      <line x1="6" y1="20" x2="6" y2="10" />
+      <line x1="12" y1="20" x2="12" y2="4" />
+      <line x1="18" y1="20" x2="18" y2="14" />
+    </svg>
+  );
+}
+function PeopleIcon({ size = 18 }) {
+  return (
+    <svg {...iconSvgProps(size)}>
+      <circle cx="9" cy="8" r="3.5" />
+      <path d="M2.5 20 a6.5 6.5 0 0 1 13 0" />
+      <circle cx="17" cy="9" r="2.5" />
+      <path d="M16 14.2 a5 5 0 0 1 5.5 5.8" />
+    </svg>
+  );
+}
+function IconChip({ Icon, size = 32 }) {
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: 9,
+        background: `${COLORS.fairway}26`,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+      }}
+    >
+      <Icon />
+    </div>
+  );
+}
+
 // ===== Header (post-login shell) =====
-function CoachHeader({ screen, onHome, onSettings, onBack }) {
+function CoachHeader({ screen, backTarget, onHome, onSettings, onBack }) {
   return (
     <div
       className="no-print"
@@ -190,17 +295,21 @@ function CoachHeader({ screen, onHome, onSettings, onBack }) {
       <div onClick={onHome} style={{ display: "flex", alignItems: "center", gap: 7, cursor: "pointer" }}>
         <img src={LOGO_SRC} alt="" style={{ width: 20, height: 20, flexShrink: 0 }} />
         <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 19, letterSpacing: 0.5, lineHeight: 1, color: COLORS.cream }}>
+          <div style={{ fontFamily: SYS_FONT, fontSize: 19, letterSpacing: 0.5, lineHeight: 1, color: COLORS.cream }}>
             THE PRACTICE APP
           </div>
           <CoachBadge />
         </div>
       </div>
       <div style={{ display: "flex", gap: 5 }}>
-        {screen === "dashboard" ? (
-          <button onClick={onSettings} style={headerBtnStyle}>SETTINGS</button>
-        ) : (
+        {screen !== "dashboard" && backTarget !== "dashboard" && (
           <button onClick={onBack} style={headerBtnStyle}>BACK</button>
+        )}
+        {screen !== "dashboard" && (
+          <button onClick={onHome} style={headerBtnStyle}>HOME</button>
+        )}
+        {screen === "dashboard" && (
+          <button onClick={onSettings} style={headerBtnStyle}>SETTINGS</button>
         )}
       </div>
     </div>
@@ -210,7 +319,7 @@ function CoachHeader({ screen, onHome, onSettings, onBack }) {
 function EmptyState({ title, body, actionLabel, onAction }) {
   return (
     <Card style={{ textAlign: "center", padding: "26px 18px" }}>
-      <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 18, color: COLORS.cream }}>{title}</div>
+      <div style={{ fontFamily: SYS_FONT, fontSize: 18, color: COLORS.cream }}>{title}</div>
       <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 13, color: COLORS.creamDim, marginTop: 8, lineHeight: 1.55 }}>
         {body}
       </div>
@@ -224,7 +333,7 @@ function EmptyState({ title, body, actionLabel, onAction }) {
             border: `1px solid ${COLORS.creamDim}55`,
             background: "transparent",
             color: COLORS.creamDim,
-            fontFamily: "'JetBrains Mono', monospace",
+            fontFamily: SYS_FONT,
             fontSize: 11,
             letterSpacing: 0.5,
             cursor: "pointer",
@@ -251,22 +360,10 @@ function PlayerBlock({ player, onClick, selectMode, selected, atCap }) {
         overflow: "hidden",
         cursor: disabled ? "not-allowed" : "pointer",
         border: selected ? `2px solid ${COLORS.fairwayLight}` : `2px solid ${ragColor}`,
-        background: PLAYER_BOX_GRADIENT,
+        background: selected ? `${COLORS.fairway}55` : COLORS.turf,
         opacity: disabled ? 0.4 : 1,
       }}
     >
-      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: `${COLORS.cream}33`, letterSpacing: 1 }}>
-          {getInitials(player.playerName)}
-        </div>
-      </div>
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          background: `linear-gradient(180deg, transparent 45%, ${COLORS.turfDark}dd 100%)`,
-        }}
-      />
       {selectMode && (
         <div
           style={{
@@ -289,15 +386,16 @@ function PlayerBlock({ player, onClick, selectMode, selected, atCap }) {
           {selected ? "✓" : ""}
         </div>
       )}
-      <div style={{ position: "absolute", left: 6, bottom: 5, right: 6 }}>
+      <div style={{ position: "absolute", left: 6, right: 6, top: 0, bottom: 0, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", textAlign: "center" }}>
         <div
           style={{
-            fontFamily: "'Bebas Neue', sans-serif",
+            fontFamily: SYS_FONT,
+            fontWeight: 700,
             fontSize: 12,
             letterSpacing: 0.3,
             lineHeight: 1.15,
             color: COLORS.cream,
-            textShadow: "0 1px 4px rgba(0,0,0,0.5)",
+            maxWidth: "100%",
             whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",
@@ -307,16 +405,16 @@ function PlayerBlock({ player, onClick, selectMode, selected, atCap }) {
         </div>
         <div
           style={{
-            fontFamily: "'JetBrains Mono', monospace",
+            fontFamily: SYS_FONT,
             fontSize: 9,
             letterSpacing: 0.2,
             lineHeight: 1.2,
             color: COLORS.creamDim,
-            textShadow: "0 1px 4px rgba(0,0,0,0.5)",
             whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",
-            marginTop: 1,
+            maxWidth: "100%",
+            marginTop: 3,
           }}
         >
           {lastSessionLabel(player.lastSessionDate)}
@@ -346,7 +444,7 @@ function DashboardScreen({
     <div>
       <div style={{ marginBottom: 16 }}>
         <SectionLabel>{compareMode ? "COMPARE" : "WELCOME BACK"}</SectionLabel>
-        <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 26, marginTop: 2 }}>
+        <div style={{ fontFamily: SYS_FONT, fontSize: 26, marginTop: 2 }}>
           {compareMode ? `Select up to ${MAX_COMPARE} players` : "Your players"}
         </div>
       </div>
@@ -367,20 +465,23 @@ function DashboardScreen({
               onClick={onOpenRequests}
               style={{ marginBottom: 16, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}
             >
-              <div>
-                <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 16, color: COLORS.cream }}>
-                  {requests.length} pending request{requests.length === 1 ? "" : "s"}
-                </div>
-                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: COLORS.creamDim, marginTop: 2 }}>
-                  Tap to review
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <IconChip Icon={PeopleIcon} />
+                <div>
+                  <div style={{ fontFamily: SYS_FONT, fontWeight: 700, fontSize: 14, letterSpacing: 0.5, color: COLORS.cream }}>
+                    {requests.length} pending request{requests.length === 1 ? "" : "s"}
+                  </div>
+                  <div style={{ fontFamily: SYS_FONT, fontSize: 10, color: COLORS.creamDim, marginTop: 2 }}>
+                    Tap to review
+                  </div>
                 </div>
               </div>
-              <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 18, color: COLORS.creamDim }}>›</div>
+              <div style={{ fontFamily: SYS_FONT, fontSize: 18, color: COLORS.creamDim }}>›</div>
             </Card>
           )}
 
           {roster.length === 0 ? (
-            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: COLORS.creamDim, opacity: 0.7, marginBottom: 12 }}>
+            <div style={{ fontFamily: SYS_FONT, fontSize: 11, color: COLORS.creamDim, opacity: 0.7, marginBottom: 12 }}>
               Approved players will appear here as blocks you can tap into.
             </div>
           ) : (
@@ -410,7 +511,7 @@ function DashboardScreen({
               {roster.length > 0 && roster.length < 2 && (
                 <div
                   style={{
-                    fontFamily: "'JetBrains Mono', monospace",
+                    fontFamily: SYS_FONT,
                     fontSize: 10,
                     color: COLORS.creamDim,
                     opacity: 0.6,
@@ -434,7 +535,7 @@ function DashboardScreen({
                     border: `1px solid ${COLORS.creamDim}55`,
                     background: "transparent",
                     color: COLORS.creamDim,
-                    fontFamily: "'Bebas Neue', sans-serif",
+                    fontFamily: SYS_FONT,
                     fontSize: 16,
                     letterSpacing: 1,
                     cursor: "pointer",
@@ -453,7 +554,7 @@ function DashboardScreen({
               {compareSelected.length < 2 && (
                 <div
                   style={{
-                    fontFamily: "'JetBrains Mono', monospace",
+                    fontFamily: SYS_FONT,
                     fontSize: 10,
                     color: COLORS.creamDim,
                     opacity: 0.6,
@@ -476,12 +577,12 @@ function primaryButtonStyle(disabled) {
   return {
     width: "100%",
     marginTop: 18,
-    padding: "12px 0",
-    borderRadius: 10,
+    padding: "13px 0",
+    borderRadius: 12,
     border: "none",
-    background: disabled ? `${COLORS.fairway}66` : COLORS.fairway,
+    background: disabled ? `${COLORS.flag}66` : COLORS.flag,
     color: COLORS.cream,
-    fontFamily: "'Bebas Neue', sans-serif",
+    fontFamily: SYS_FONT,
     fontSize: 18,
     letterSpacing: 1,
     cursor: disabled ? "not-allowed" : "pointer",
@@ -495,17 +596,17 @@ function RequestRow({ request, onApprove, onDecline, busy }) {
       <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 15, color: COLORS.cream, fontWeight: 600 }}>
         {request.playerName}
       </div>
-      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: COLORS.creamDim, marginTop: 3 }}>
+      <div style={{ fontFamily: SYS_FONT, fontSize: 11, color: COLORS.creamDim, marginTop: 3 }}>
         {request.playerEmail}
       </div>
-      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: COLORS.creamDim, marginTop: 6, opacity: 0.75 }}>
+      <div style={{ fontFamily: SYS_FONT, fontSize: 10, color: COLORS.creamDim, marginTop: 6, opacity: 0.75 }}>
         Requested {formatRelative(request.requestedAt)}
       </div>
       <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
         <button
           onClick={() => onApprove(request)}
           disabled={busy}
-          style={{ ...primaryButtonStyle(busy), marginTop: 0, flex: 1, fontSize: 13, padding: "9px 0" }}
+          style={{ ...primaryButtonStyle(busy), marginTop: 0, flex: 1, fontSize: 13, padding: "9px 0", borderRadius: 10, background: busy ? `${COLORS.fairway}66` : COLORS.fairway }}
         >
           APPROVE
         </button>
@@ -519,7 +620,7 @@ function RequestRow({ request, onApprove, onDecline, busy }) {
             border: `1px solid ${COLORS.creamDim}55`,
             background: "transparent",
             color: COLORS.creamDim,
-            fontFamily: "'Bebas Neue', sans-serif",
+            fontFamily: SYS_FONT,
             fontSize: 13,
             letterSpacing: 1,
             cursor: busy ? "not-allowed" : "pointer",
@@ -536,7 +637,7 @@ function RequestsScreen({ requests, onApprove, onDecline, busyId }) {
     <div>
       <div style={{ marginBottom: 16 }}>
         <SectionLabel>PENDING REQUESTS</SectionLabel>
-        <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, marginTop: 2 }}>Review requests</div>
+        <div style={{ fontFamily: SYS_FONT, fontSize: 24, marginTop: 2 }}>Review requests</div>
       </div>
       {requests.length === 0 ? (
         <EmptyState title="All caught up" body="No pending requests right now." />
@@ -575,11 +676,11 @@ const BASELINE_LABEL = "PGA TOUR";
 
 // Order here matches the "All stats" list order below.
 const SECTION_META = [
-  { key: "range", label: "RANGE", metricType: "sg" },
-  { key: "teeAccuracy", label: "TEE ACCURACY", metricType: "pct" },
-  { key: "shortGame", label: "SHORT GAME", metricType: "sg" },
-  { key: "puttingPractice", label: "PUTTING — PRACTICE", metricType: "sg" },
-  { key: "puttingCourse", label: "PUTTING — ON COURSE", metricType: "sg" },
+  { key: "range", label: "RANGE", metricType: "sg", Icon: RangeIcon },
+  { key: "teeAccuracy", label: "TEE ACCURACY", metricType: "pct", Icon: TeeAccuracyIcon },
+  { key: "shortGame", label: "SHORT GAME", metricType: "sg", Icon: ShortGameIcon },
+  { key: "puttingPractice", label: "PUTTING — PRACTICE", metricType: "sg", Icon: PuttingIcon },
+  { key: "puttingCourse", label: "PUTTING — ON COURSE", metricType: "sg", Icon: OnCourseIcon },
 ];
 
 function buildSampleStats(player) {
@@ -695,8 +796,8 @@ function buildSuggestedFocus(stats) {
 function StatBox({ label, value, valueColor }) {
   return (
     <div style={{ flex: 1, background: `${COLORS.turf}aa`, border: `1px solid ${COLORS.creamDim}22`, borderRadius: 10, padding: "9px 12px" }}>
-      <div style={{ fontSize: 9, color: COLORS.creamDim, fontFamily: "'JetBrains Mono', monospace", letterSpacing: 1 }}>{label}</div>
-      <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, color: valueColor || COLORS.cream, marginTop: 1 }}>{value}</div>
+      <div style={{ fontSize: 9, color: COLORS.creamDim, fontFamily: SYS_FONT, letterSpacing: 1 }}>{label}</div>
+      <div style={{ fontFamily: SYS_FONT, fontSize: 24, color: valueColor || COLORS.cream, marginTop: 1 }}>{value}</div>
     </div>
   );
 }
@@ -721,21 +822,22 @@ function PlayerOverviewScreen({ player, onOpenSection, onRemoveFromRoster, previ
             width: 52,
             height: 52,
             borderRadius: "50%",
-            background: PLAYER_BOX_GRADIENT,
+            background: `${COLORS.fairway}26`,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            fontFamily: "'Bebas Neue', sans-serif",
+            fontFamily: SYS_FONT,
+            fontWeight: 700,
             fontSize: 18,
-            color: COLORS.cream,
+            color: COLORS.fairway,
             flexShrink: 0,
           }}
         >
           {getInitials(player.playerName)}
         </div>
         <div>
-          <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, lineHeight: 1.1 }}>{player.playerName}</div>
-          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: COLORS.creamDim, marginTop: 2 }}>
+          <div style={{ fontFamily: SYS_FONT, fontSize: 22, lineHeight: 1.1 }}>{player.playerName}</div>
+          <div style={{ fontFamily: SYS_FONT, fontSize: 11, color: COLORS.creamDim, marginTop: 2 }}>
             SG baseline: {BASELINE_LABEL} · {totalSessions} total sessions
             {!previewMode && statsLoading && " · loading…"}
           </div>
@@ -749,12 +851,12 @@ function PlayerOverviewScreen({ player, onOpenSection, onRemoveFromRoster, previ
             <div key={r.key} style={rowStyle}>
               <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 13, color: COLORS.cream }}>
                 {r.label}
-                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: COLORS.creamDim, marginLeft: 6 }}>
+                <span style={{ fontFamily: SYS_FONT, fontSize: 10, color: COLORS.creamDim, marginLeft: 6 }}>
                   {r.sessions} sess.
                 </span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 16, color: r.metricColor }}>{r.metric}</span>
+                <span style={{ fontFamily: SYS_FONT, fontSize: 16, color: r.metricColor }}>{r.metric}</span>
                 <span style={{ color: r.trend.color, fontSize: 12 }}>{r.trend.icon}</span>
               </div>
             </div>
@@ -764,13 +866,13 @@ function PlayerOverviewScreen({ player, onOpenSection, onRemoveFromRoster, previ
 
       <Card style={{ marginTop: 10 }}>
         <SectionLabel>SUGGESTED FOCUS AREAS</SectionLabel>
-        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: COLORS.creamDim, marginTop: 2 }}>
+        <div style={{ fontFamily: SYS_FONT, fontSize: 10, color: COLORS.creamDim, marginTop: 2 }}>
           Weakest spot in each section — a starting point to bring up with {firstName}
         </div>
         <div style={{ marginTop: 8 }}>
           {focus.map((h, i) => (
             <div key={i} style={rowStyle}>
-              <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: COLORS.creamDim }}>{h.area}</div>
+              <div style={{ fontFamily: SYS_FONT, fontSize: 11, color: COLORS.creamDim }}>{h.area}</div>
               <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 12, color: COLORS.flag, textAlign: "right" }}>→ {h.text}</div>
             </div>
           ))}
@@ -785,7 +887,7 @@ function PlayerOverviewScreen({ player, onOpenSection, onRemoveFromRoster, previ
             border: `1px solid ${COLORS.creamDim}55`,
             background: shared ? `${COLORS.fairway}55` : "transparent",
             color: COLORS.creamDim,
-            fontFamily: "'JetBrains Mono', monospace",
+            fontFamily: SYS_FONT,
             fontSize: 11,
             letterSpacing: 0.5,
             cursor: "pointer",
@@ -801,7 +903,7 @@ function PlayerOverviewScreen({ player, onOpenSection, onRemoveFromRoster, previ
           <div style={{ marginTop: 8 }}>
             {strengths.map((h, i) => (
               <div key={i} style={rowStyle}>
-                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: COLORS.creamDim }}>{h.area}</div>
+                <div style={{ fontFamily: SYS_FONT, fontSize: 11, color: COLORS.creamDim }}>{h.area}</div>
                 <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 12, color: COLORS.fairwayLight, textAlign: "right" }}>★ {h.text}</div>
               </div>
             ))}
@@ -823,22 +925,25 @@ function PlayerOverviewScreen({ player, onOpenSection, onRemoveFromRoster, previ
               onClick={() => onOpenSection(s.key)}
               style={{ cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}
             >
-              <div>
-                <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 16, color: COLORS.cream }}>{s.label}</div>
-                <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: COLORS.creamDim, marginTop: 2 }}>
-                  {sStats.sessionCount} sessions
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <IconChip Icon={s.Icon} />
+                <div>
+                  <div style={{ fontFamily: SYS_FONT, fontWeight: 700, fontSize: 14, letterSpacing: 0.5, color: COLORS.cream }}>{s.label}</div>
+                  <div style={{ fontFamily: SYS_FONT, fontSize: 10, color: COLORS.creamDim, marginTop: 2 }}>
+                    {sStats.sessionCount} sessions
+                  </div>
                 </div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 17, color }}>{metric}</span>
-                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 16, color: COLORS.creamDim }}>›</span>
+                <span style={{ fontFamily: SYS_FONT, fontSize: 17, color }}>{metric}</span>
+                <span style={{ fontFamily: SYS_FONT, fontSize: 16, color: COLORS.creamDim }}>›</span>
               </div>
             </Card>
           );
         })}
       </div>
 
-      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: COLORS.creamDim, marginTop: 14, lineHeight: 1.5, opacity: 0.75 }}>
+      <div style={{ fontFamily: SYS_FONT, fontSize: 9, color: COLORS.creamDim, marginTop: 14, lineHeight: 1.5, opacity: 0.75 }}>
         Sample data for preview — ▲/▼ = trending better/worse · ◆ = steady · Strokes gained is
         approximate, always measured against the PGA Tour baseline here — regardless of whatever
         baseline {firstName} has set for themselves in their own app — so every player's numbers
@@ -857,7 +962,7 @@ function PlayerOverviewScreen({ player, onOpenSection, onRemoveFromRoster, previ
                 border: `1px solid ${COLORS.creamDim}33`,
                 background: "transparent",
                 color: COLORS.creamDim,
-                fontFamily: "'JetBrains Mono', monospace",
+                fontFamily: SYS_FONT,
                 fontSize: 11,
                 letterSpacing: 0.5,
                 cursor: "pointer",
@@ -867,7 +972,7 @@ function PlayerOverviewScreen({ player, onOpenSection, onRemoveFromRoster, previ
             </button>
           ) : (
             <>
-              <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: COLORS.creamDim, lineHeight: 1.5 }}>
+              <div style={{ fontFamily: SYS_FONT, fontSize: 11, color: COLORS.creamDim, lineHeight: 1.5 }}>
                 Remove {player.playerName} from your roster? They'll lose your shared notes and
                 you'll lose access to their stats — they'd need to send a new request to reconnect.
               </div>
@@ -881,7 +986,7 @@ function PlayerOverviewScreen({ player, onOpenSection, onRemoveFromRoster, previ
                     border: `1px solid ${COLORS.creamDim}33`,
                     background: "transparent",
                     color: COLORS.creamDim,
-                    fontFamily: "'Bebas Neue', sans-serif",
+                    fontFamily: SYS_FONT,
                     fontSize: 14,
                     letterSpacing: 0.5,
                     cursor: "pointer",
@@ -901,7 +1006,7 @@ function PlayerOverviewScreen({ player, onOpenSection, onRemoveFromRoster, previ
                     border: `1px solid ${COLORS.flag}66`,
                     background: "transparent",
                     color: COLORS.flag,
-                    fontFamily: "'Bebas Neue', sans-serif",
+                    fontFamily: SYS_FONT,
                     fontSize: 14,
                     letterSpacing: 0.5,
                     cursor: "pointer",
@@ -924,10 +1029,10 @@ function StatBucketRow({ label, sub, valueText, valueColor }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0" }}>
       <div>
-        <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 20, color: COLORS.cream }}>{label}</div>
-        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: COLORS.creamDim }}>{sub}</div>
+        <div style={{ fontFamily: SYS_FONT, fontSize: 20, color: COLORS.cream }}>{label}</div>
+        <div style={{ fontFamily: SYS_FONT, fontSize: 11, color: COLORS.creamDim }}>{sub}</div>
       </div>
-      <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 22, color: valueColor }}>{valueText}</div>
+      <div style={{ fontFamily: SYS_FONT, fontSize: 22, color: valueColor }}>{valueText}</div>
     </div>
   );
 }
@@ -936,7 +1041,7 @@ function StatInsightCard({ title, subtitle, rows }) {
     <Card style={{ marginBottom: 14 }}>
       <SectionLabel>{title}</SectionLabel>
       {subtitle && (
-        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: COLORS.creamDim, marginTop: 2 }}>{subtitle}</div>
+        <div style={{ fontFamily: SYS_FONT, fontSize: 11, color: COLORS.creamDim, marginTop: 2 }}>{subtitle}</div>
       )}
       <div style={{ marginTop: 8 }}>
         {rows.map((r, i) => (
@@ -995,15 +1100,18 @@ function PlayerSectionScreen({ player, sectionKey, previewMode }) {
 
   return (
     <div>
-      <div style={{ marginBottom: 16 }}>
-        <SectionLabel>{player.playerName.toUpperCase()}</SectionLabel>
-        <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, marginTop: 2 }}>{meta.label}</div>
+      <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 12 }}>
+        <IconChip Icon={meta.Icon} size={40} />
+        <div>
+          <SectionLabel>{player.playerName.toUpperCase()}</SectionLabel>
+          <div style={{ fontFamily: SYS_FONT, fontSize: 24, marginTop: 2 }}>{meta.label}</div>
+        </div>
       </div>
 
       <Card style={{ marginBottom: 14 }}>
         <SectionLabel>Overview</SectionLabel>
         {meta.metricType !== "pct" && (
-          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: COLORS.creamDim, marginTop: 2 }}>
+          <div style={{ fontFamily: SYS_FONT, fontSize: 10, color: COLORS.creamDim, marginTop: 2 }}>
             vs {BASELINE_LABEL} baseline
           </div>
         )}
@@ -1016,12 +1124,12 @@ function PlayerSectionScreen({ player, sectionKey, previewMode }) {
       {bucketRows.length > 0 && <StatInsightCard title="Breakdown" subtitle={bucketSubtitle} rows={bucketRows} />}
 
       {sectionKey === "puttingCourse" && (
-        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: COLORS.creamDim, opacity: 0.7 }}>
+        <div style={{ fontFamily: SYS_FONT, fontSize: 11, color: COLORS.creamDim, opacity: 0.7 }}>
           Round-by-round breakdown isn't in this preview yet — just the overall average for now.
         </div>
       )}
 
-      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: COLORS.creamDim, marginTop: 16, opacity: 0.6 }}>
+      <div style={{ fontFamily: SYS_FONT, fontSize: 9, color: COLORS.creamDim, marginTop: 16, opacity: 0.6 }}>
         Sample data for preview.
       </div>
     </div>
@@ -1056,7 +1164,7 @@ function CompareTooltip({ active, payload, isPct }) {
         border: `1px solid ${COLORS.creamDim}33`,
         borderRadius: 8,
         padding: "6px 10px",
-        fontFamily: "'JetBrains Mono', monospace",
+        fontFamily: SYS_FONT,
         fontSize: 11,
         color: COLORS.cream,
       }}
@@ -1066,25 +1174,30 @@ function CompareTooltip({ active, payload, isPct }) {
   );
 }
 
-function CompareBarChart({ title, subtitle, data, isPct }) {
+function CompareBarChart({ title, subtitle, data, isPct, Icon }) {
   return (
     <Card style={{ marginBottom: 14 }}>
-      <SectionLabel>{title}</SectionLabel>
-      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: COLORS.creamDim, marginTop: 2 }}>{subtitle}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        {Icon && <IconChip Icon={Icon} size={28} />}
+        <div>
+          <SectionLabel>{title}</SectionLabel>
+          <div style={{ fontFamily: SYS_FONT, fontSize: 10, color: COLORS.creamDim, marginTop: 2 }}>{subtitle}</div>
+        </div>
+      </div>
       <div style={{ marginTop: 10, height: 180 }}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data} margin={{ top: 18, right: 4, left: -8, bottom: 0 }}>
             <CartesianGrid vertical={false} stroke={`${COLORS.creamDim}22`} />
             <XAxis
               dataKey="name"
-              tick={{ fill: COLORS.creamDim, fontFamily: "'JetBrains Mono', monospace", fontSize: 10 }}
+              tick={{ fill: COLORS.creamDim, fontFamily: SYS_FONT, fontSize: 10 }}
               axisLine={{ stroke: `${COLORS.creamDim}33` }}
               tickLine={false}
             />
             <YAxis
               domain={isPct ? [0, 100] : ["dataMin - 0.05", "dataMax + 0.05"]}
               tickFormatter={(v) => (isPct ? `${v}%` : v.toFixed(2))}
-              tick={{ fill: COLORS.creamDim, fontFamily: "'JetBrains Mono', monospace", fontSize: 10 }}
+              tick={{ fill: COLORS.creamDim, fontFamily: SYS_FONT, fontSize: 10 }}
               axisLine={false}
               tickLine={false}
               width={44}
@@ -1095,7 +1208,7 @@ function CompareBarChart({ title, subtitle, data, isPct }) {
                 dataKey="value"
                 position="top"
                 formatter={(v) => (isPct ? `${v}%` : formatSG(v))}
-                style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fill: COLORS.cream }}
+                style={{ fontFamily: SYS_FONT, fontSize: 10, fill: COLORS.cream }}
               />
               {data.map((d, i) => (
                 <Cell key={i} fill={d.color} />
@@ -1145,7 +1258,7 @@ function CompareResultsScreen({ roster, selected, previewMode }) {
     <div>
       <div style={{ marginBottom: 16 }}>
         <SectionLabel>COMPARE</SectionLabel>
-        <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 24, marginTop: 2 }}>
+        <div style={{ fontFamily: SYS_FONT, fontSize: 24, marginTop: 2 }}>
           {compareEntries.length} players
         </div>
       </div>
@@ -1154,7 +1267,7 @@ function CompareResultsScreen({ roster, selected, previewMode }) {
         {compareEntries.map((e) => (
           <div key={e.player.id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <div style={{ width: 10, height: 10, borderRadius: 3, background: e.color, flexShrink: 0 }} />
-            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: COLORS.creamDim }}>
+            <span style={{ fontFamily: SYS_FONT, fontSize: 11, color: COLORS.creamDim }}>
               {e.player.playerName}
             </span>
           </div>
@@ -1163,7 +1276,7 @@ function CompareResultsScreen({ roster, selected, previewMode }) {
 
       <Card style={{ marginBottom: 18 }}>
         <SectionLabel>BASELINE</SectionLabel>
-        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: COLORS.creamDim, marginTop: 2 }}>
+        <div style={{ fontFamily: SYS_FONT, fontSize: 10, color: COLORS.creamDim, marginTop: 2 }}>
           Applies to every player here — doesn't affect Tee Accuracy, which isn't strokes-gained based
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6, marginTop: 10 }}>
@@ -1177,7 +1290,7 @@ function CompareResultsScreen({ roster, selected, previewMode }) {
                 border: baselineKey === b.key ? `2px solid ${COLORS.fairwayLight}` : `1px solid ${COLORS.creamDim}33`,
                 background: baselineKey === b.key ? COLORS.fairway : "transparent",
                 color: baselineKey === b.key ? COLORS.cream : COLORS.creamDim,
-                fontFamily: "'JetBrains Mono', monospace",
+                fontFamily: SYS_FONT,
                 fontSize: 10,
                 letterSpacing: 0.3,
                 cursor: "pointer",
@@ -1193,13 +1306,14 @@ function CompareResultsScreen({ roster, selected, previewMode }) {
         <CompareBarChart
           key={s.key}
           title={s.label}
+          Icon={s.Icon}
           subtitle={s.metricType === "pct" ? "% fairways hit" : `Avg strokes gained vs ${baselineOption.label}`}
           data={chartDataFor(s.key, s.metricType === "pct")}
           isPct={s.metricType === "pct"}
         />
       ))}
 
-      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: COLORS.creamDim, marginTop: 4, opacity: 0.6 }}>
+      <div style={{ fontFamily: SYS_FONT, fontSize: 9, color: COLORS.creamDim, marginTop: 4, opacity: 0.6 }}>
         Sample data for preview.
       </div>
     </div>
@@ -1207,17 +1321,17 @@ function CompareResultsScreen({ roster, selected, previewMode }) {
 }
 
 // ===== Settings =====
-function SettingsScreen({ profile, onSignOut, previewMode, onExitPreview }) {
+function SettingsScreen({ profile, onSignOut, previewMode, onExitPreview, onBack }) {
   return (
     <div>
       <div style={{ marginBottom: 16 }}>
-        <SectionLabel>SETTINGS</SectionLabel>
+        <div style={{ fontFamily: SYS_FONT, fontSize: 24, letterSpacing: 1, lineHeight: 1, color: COLORS.cream }}>SETTINGS</div>
       </div>
 
       <Card style={{ marginBottom: 12 }}>
         <SectionLabel>COACH PROFILE</SectionLabel>
-        <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 20, marginTop: 6 }}>{profile?.name || "—"}</div>
-        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: COLORS.creamDim, marginTop: 2 }}>
+        <div style={{ fontFamily: SYS_FONT, fontSize: 20, marginTop: 6 }}>{profile?.name || "—"}</div>
+        <div style={{ fontFamily: SYS_FONT, fontSize: 12, color: COLORS.creamDim, marginTop: 2 }}>
           {profile?.email || ""}
         </div>
         {profile?.bio && (
@@ -1244,7 +1358,7 @@ function SettingsScreen({ profile, onSignOut, previewMode, onExitPreview }) {
               border: `1px solid ${COLORS.creamDim}55`,
               background: "transparent",
               color: COLORS.creamDim,
-              fontFamily: "'JetBrains Mono', monospace",
+              fontFamily: SYS_FONT,
               fontSize: 11,
               letterSpacing: 0.5,
               cursor: "pointer",
@@ -1260,18 +1374,37 @@ function SettingsScreen({ profile, onSignOut, previewMode, onExitPreview }) {
         style={{
           width: "100%",
           marginTop: 6,
-          padding: "12px 0",
+          padding: "10px 0",
           borderRadius: 10,
-          border: "none",
-          background: COLORS.flag,
-          color: COLORS.cream,
-          fontFamily: "'Bebas Neue', sans-serif",
-          fontSize: 16,
-          letterSpacing: 1,
+          border: `1px solid ${COLORS.creamDim}33`,
+          background: "transparent",
+          color: COLORS.creamDim,
+          fontFamily: SYS_FONT,
+          fontSize: 11,
+          letterSpacing: 0.5,
           cursor: "pointer",
         }}
       >
         SIGN OUT
+      </button>
+
+      <button
+        onClick={onBack}
+        style={{
+          width: "100%",
+          marginTop: 18,
+          padding: "13px 0",
+          borderRadius: 12,
+          border: `1px solid ${COLORS.creamDim}33`,
+          background: "transparent",
+          color: COLORS.cream,
+          fontFamily: SYS_FONT,
+          fontSize: 18,
+          letterSpacing: 1,
+          cursor: "pointer",
+        }}
+      >
+        BACK
       </button>
     </div>
   );
@@ -1418,7 +1551,12 @@ export default function CoachApp({ uid, profile, onSignOut }) {
     <div
       style={{
         fontFamily: "'Inter', sans-serif",
-        background: `radial-gradient(circle at 20% 0%, ${COLORS.turf} 0%, ${COLORS.turfDark} 60%)`,
+        // Same flat charcoal + subtle dot texture as the player app's shell.
+        backgroundColor: COLORS.turfDark,
+        backgroundImage:
+          "radial-gradient(circle, rgba(255,255,255,0.045) 1.3px, transparent 1.5px), radial-gradient(circle, rgba(255,255,255,0.045) 1.3px, transparent 1.5px)",
+        backgroundSize: "20px 20px, 20px 20px",
+        backgroundPosition: "0 0, 10px 10px",
         minHeight: "100vh",
         color: COLORS.cream,
         display: "flex",
@@ -1430,6 +1568,7 @@ export default function CoachApp({ uid, profile, onSignOut }) {
       <div style={{ width: "100%", maxWidth: 420 }}>
         <CoachHeader
           screen={screen}
+          backTarget={BACK_MAP[screen] || "dashboard"}
           onHome={() => setScreen("dashboard")}
           onSettings={() => setScreen("settings")}
           onBack={() => setScreen(BACK_MAP[screen] || "dashboard")}
@@ -1473,7 +1612,7 @@ export default function CoachApp({ uid, profile, onSignOut }) {
         )}
 
         {screen === "settings" && (
-          <SettingsScreen profile={profile} onSignOut={onSignOut} previewMode={previewMode} onExitPreview={handleExitPreview} />
+          <SettingsScreen profile={profile} onSignOut={onSignOut} previewMode={previewMode} onExitPreview={handleExitPreview} onBack={() => setScreen("dashboard")} />
         )}
       </div>
     </div>
